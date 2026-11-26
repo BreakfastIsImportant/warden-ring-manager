@@ -1,5 +1,20 @@
 local mq = require('mq')
 local ImGui = require('ImGui')
+local mqRoot = mq.TLO
+    and mq.TLO.MacroQuest
+    and mq.TLO.MacroQuest.Path
+    and mq.TLO.MacroQuest.Path()
+if mqRoot and mqRoot ~= '' then
+    local luaRoot = mqRoot..'\\lua\\'
+    package.path = table.concat({
+        luaRoot..'?.lua',
+        luaRoot..'?\\init.lua',
+        luaRoot..'pt-main\\?.lua',
+        package.path,
+    },';')
+end
+local PearlNetwork = require('pt-main.network')
+local PearlUI = require('pt-main.ui')
 local itemIcons = mq.FindTextureAnimation('A_DragItem')
 local ITEM_ICON_OFFSET = 500
 
@@ -100,6 +115,78 @@ local InstanceCategories = {
     },
 }
 
+local ProgressNPCs = {
+    solo={name='Lady Maria Luisa',categoryIndex=1},
+    group={name='Sir Daniel',categoryIndex=2},
+}
+
+-- Names come from https://www.eqmight.com (Quests / Notable NPC pages).
+local DefaultCurrencies = {
+    {name='Token of Might',note='Instance rewards; spend with Walter'},
+    {name='Token of Epic Might',note='10 Tokens of Might each (Walter); Epic 1.0 weapons from Cloe'},
+    {name='Token of Legendary Might',note='6 Tokens of Epic Might each; gemstones from Cacuzza'},
+    {name='Invaluable Coin',note='Hard/Hard- instance win; hand to Walter or Cloe',itemOnly=true},
+}
+
+local GuideSections = {
+    {
+        id='basics',
+        label='How Might Works',
+        lines={
+            'Characters gain Might as they level; instance difficulty and final rewards depend on the party\'s Might.',
+            'Get relevant AAs before leveling further to maximise Might.',
+            'Suggested Might (or slightly below) gives Normal mode; Normal wins add a bonus chest with extra loot and Tokens of Might.',
+            'Reclaim Tokens via Inventory > Alternate Currencies > Reclaim, then shop with Walter.',
+            'Your first instance is offered by Marta in regular Permafrost (at least 1 Token of Might).',
+        },
+    },
+    {
+        id='path',
+        label='Progression Path',
+        lines={
+            'Level 45: eligible for progression instances (leveling to 52 first may help, depending on class and gear).',
+            'Tier 1: finish both solo instances OR both group instances to unlock Tier 2 and level 55. Completing both paths grants the AA reward twice.',
+            'Level 66 (10 AA): beat the Ancient Statue of War in the instanced Plane of War on Normal or higher; loot the Ancient Battle Plans and hand them to Sir Daniel in Plane of Knowledge.',
+            'Level 67 (20 AA): beat the Legend of the Spider Den on Normal- or higher; hand the Legendary Battle Plans to Sir Daniel.',
+            'Ask Lady Maria Luisa (solo/duo) or Sir Daniel (group) for your current standing. Their spirits only spawn inside instances.',
+            'Use the Checklist tab to mark each tier target and side flag as you finish it.',
+        },
+    },
+    {
+        id='npcs',
+        label='Key NPCs',
+        lines={
+            'Sir Daniel / Lady Maria Luisa: progression status and level cap (Plane of Knowledge, Surefall Glades, Nexus, Temple of Marr).',
+            'Walter: Tokens shop. 10 Tokens of Might buys a class buff artifact voucher (needs good faction: give him or Cloe an Invaluable Coin).',
+            'Cloe: custom currency merchant; Epic 1.0 weapons for 2 Tokens of Epic Might (1 for Warrior, Ranger, Beastlord); Epic Gemstones for 3.',
+            'Cacuzza: Legendary Gemstones for 5+ Tokens of Legendary Might.',
+            'Pam: trades Tokens between your own characters (group of two, same zone, same IP).',
+            'Pietri: exchanges your Ring of the Warden or Moon Pet Orb for any unlocked rank.',
+            'Moonshine (L60), Lydia (L65), Korven (L68): buff items in the Nexus, unlocked by handing in more Invaluable Coins.',
+        },
+    },
+    {
+        id='currency',
+        label='Currency Flow',
+        lines={
+            '1 Invaluable Coin: Walter sells 1 Token of Epic Might for 10 Tokens of Might.',
+            '2 Invaluable Coins: Walter sells 1 Token of Legendary Might for 6 Tokens of Epic Might.',
+            'More Invaluable Coins unlock further buff items from Moonshine, Lydia, and Korven.',
+            'Epic 1.0 upgrade: 3 additional Tokens of Epic Might for the matching augmentation.',
+        },
+    },
+    {
+        id='rings',
+        label='Warden & Moon Pets',
+        lines={
+            'Each completed Warden of Might stage unlocks a ring rank; every rank above 0 adds 40% Might.',
+            'Warden I +40%, II +80%, III +120%, IV +160%.',
+            'Moon Pet Orb ranks 1/2/3 need levels 60/65/68 (+10 / +30 / +80 Might).',
+            'Use the Rings tab to swap rank and augments through Pietri.',
+        },
+    },
+}
+
 local State = {
     open=true,
     currentIndex=1,
@@ -120,6 +207,24 @@ local State = {
     instanceCategory=2,
     instanceTier=2,
     instanceTarget=1,
+    progressDone={},
+    progressFilter=1,
+    sideFlags={},
+    nextSideFlagID=1,
+    newSideFlagName='',
+    altCurrencies={},
+    newAltCurrencyName='',
+    currencyScanRequested=false,
+    currencyReclaimRequested=false,
+    progressStatus='Progress saves automatically.',
+    progressReports={},
+    progressPendingSave=false,
+    progressPendingChanges=0,
+    autoTrackProgressLogs=false,
+    progressEventsPending=nil,
+    selectedProgressPage='basics',
+    pearlTrackerReady=false,
+    pearlTrackerError='',
 }
 
 local function LoadoutFilePath()
@@ -145,6 +250,180 @@ local function DecodeText(value)
     return (value:gsub('(%x%x)',function(byte)
         return string.char(tonumber(byte,16))
     end))
+end
+
+local function ProgressFilePath()
+    local characterName = mq.TLO.Me.CleanName() or mq.TLO.Me.Name() or 'Character'
+    local serverName = mq.TLO.EverQuest.Server() or 'Server'
+    characterName = characterName:gsub('[^%w_-]','_')
+    serverName = serverName:gsub('[^%w_-]','_')
+    return string.format(
+        '%s\\WardenCompanionProgress_%s_%s.txt',
+        mq.configDir,
+        serverName,
+        characterName
+    )
+end
+
+local function ProgressKey(categoryIndex,tierIndex,targetIndex)
+    return string.format('%d:%d:%d',categoryIndex,tierIndex,targetIndex)
+end
+
+local function CountTargets(instance)
+    local count = 0
+    for _ in string.gmatch(instance.content,'([^|]+)') do
+        count = count + 1
+    end
+    return count
+end
+
+local function FindAltCurrency(name)
+    local normalizedName = name:lower()
+    for _,currency in ipairs(State.altCurrencies) do
+        if currency.name:lower() == normalizedName then
+            return currency
+        end
+    end
+    return nil
+end
+
+local function LoadProgress()
+    local file,openError = io.open(ProgressFilePath(),'r')
+
+    if not file then
+        if openError
+        and not openError:find('No such file',1,true)
+        and not openError:lower():find('cannot find the file',1,true)
+        then
+            State.progressStatus = 'Could not load saved progress: '..openError
+        end
+        return
+    end
+
+    for line in file:lines() do
+        local categoryValue,tierValue,targetValue =
+            line:match('^T|(%d+)|(%d+)|(%d+)$')
+        if categoryValue and tierValue and targetValue then
+            local categoryIndex = tonumber(categoryValue)
+            local tierIndex = tonumber(tierValue)
+            local targetIndex = tonumber(targetValue)
+            local category = InstanceCategories[categoryIndex]
+            local tier = category and category.tiers[tierIndex]
+
+            if tier and targetIndex >= 1 and targetIndex <= CountTargets(tier) then
+                State.progressDone[ProgressKey(
+                    categoryIndex,
+                    tierIndex,
+                    targetIndex
+                )] = true
+            end
+        else
+            local flagIDValue,doneValue,nameHex =
+                line:match('^S|(%d+)|([01])|([%x]+)$')
+
+            if flagIDValue and #nameHex > 0 then
+                local flagID = tonumber(flagIDValue)
+                local name = DecodeText(nameHex)
+                if flagID and name ~= '' then
+                    table.insert(State.sideFlags,{
+                        id=flagID,
+                        name=name,
+                        done=doneValue == '1',
+                    })
+                    State.nextSideFlagID = math.max(
+                        State.nextSideFlagID,
+                        flagID + 1
+                    )
+                end
+            else
+                local autoTrackValue = line:match('^L|([01])$')
+                if autoTrackValue then
+                    State.autoTrackProgressLogs = autoTrackValue == '1'
+                else
+                    local currencyHex = line:match('^C|([%x]+)$')
+                    if currencyHex then
+                        local currencyName = DecodeText(currencyHex)
+                        if currencyName ~= '' and not FindAltCurrency(currencyName) then
+                            table.insert(State.altCurrencies,{
+                                name=currencyName,
+                                custom=true,
+                            })
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    file:close()
+end
+
+local function SaveProgress()
+    local file,openError = io.open(ProgressFilePath(),'w')
+    if not file then
+        return false,'Could not save progress: '..tostring(openError)
+    end
+
+    for categoryIndex,category in ipairs(InstanceCategories) do
+        for tierIndex,tier in ipairs(category.tiers) do
+            for targetIndex=1,CountTargets(tier) do
+                if State.progressDone[ProgressKey(
+                    categoryIndex,
+                    tierIndex,
+                    targetIndex
+                )] then
+                    local ok,writeError = file:write(string.format(
+                        'T|%d|%d|%d\n',
+                        categoryIndex,
+                        tierIndex,
+                        targetIndex
+                    ))
+                    if not ok then
+                        file:close()
+                        return false,'Could not write saved progress: '..tostring(writeError)
+                    end
+                end
+            end
+        end
+    end
+
+    for _,flag in ipairs(State.sideFlags) do
+        local ok,writeError = file:write(string.format(
+            'S|%d|%d|%s\n',
+            flag.id,
+            flag.done and 1 or 0,
+            EncodeText(flag.name)
+        ))
+        if not ok then
+            file:close()
+            return false,'Could not write saved side flags: '..tostring(writeError)
+        end
+    end
+
+    for _,currency in ipairs(State.altCurrencies) do
+        if currency.custom then
+            local ok,writeError = file:write('C|'..EncodeText(currency.name)..'\n')
+            if not ok then
+                file:close()
+                return false,'Could not write saved currency list: '..tostring(writeError)
+            end
+        end
+    end
+
+    local autoTrackSaved,autoTrackError = file:write(
+        'L|'..(State.autoTrackProgressLogs and '1' or '0')..'\n'
+    )
+    if not autoTrackSaved then
+        file:close()
+        return false,'Could not write auto-track setting: '..tostring(autoTrackError)
+    end
+
+    local closed,closeError = file:close()
+    if not closed then
+        return false,'Could not finish saving progress: '..tostring(closeError)
+    end
+
+    return true,'Progress saves automatically.'
 end
 
 local function LoadLoadouts()
@@ -1746,12 +2025,860 @@ local function DrawMightUI()
     ImGui.TextDisabled('Assumptions: ring Rank 1-4 grants Warden I-IV; party-composition reductions are excluded.')
 end
 
+local function ProgressMatchesFilter(isDone)
+    if State.progressFilter == 2 then
+        return not isDone
+    end
+    if State.progressFilter == 3 then
+        return isDone
+    end
+    return true
+end
+
+local function SaveProgressChanges()
+    local saved,message = SaveProgress()
+    State.progressStatus = message
+    if saved then
+        State.progressPendingSave = false
+        State.progressPendingChanges = 0
+    end
+    return saved
+end
+
+local function GetProgressDisposition(text)
+    local lowerText = text:lower()
+    local incompleteMarkers = {
+        '[ ]',
+        'not completed',
+        'not complete',
+        'incomplete',
+        'not done',
+        'not cleared',
+        'not defeated',
+        'not killed',
+        'in progress',
+        'remaining',
+        'still need',
+        'not yet',
+    }
+
+    for _,marker in ipairs(incompleteMarkers) do
+        if lowerText:find(marker,1,true) then
+            return false
+        end
+    end
+
+    if lowerText:find('[x]',1,true) then
+        return true
+    end
+
+    for _,marker in ipairs({'completed','complete','done','cleared','defeated','killed'}) do
+        if lowerText:find('%f[%a]'..marker..'%f[%A]') then
+            return true
+        end
+    end
+
+    return nil
+end
+
+local function ProgressTargetMatches(line,target)
+    local lowerLine = line:lower()
+    local lowerTarget = target:lower()
+    if lowerLine:find(lowerTarget,1,true) then
+        return true
+    end
+
+    local targetWithoutQualifier = target:match('^(.-)%s*%(')
+    return targetWithoutQualifier ~= nil
+        and lowerLine:find(targetWithoutQualifier:lower(),1,true) ~= nil
+end
+
+local function HandleProgressReport(source,line)
+    local sourceInfo = ProgressNPCs[source]
+    if not sourceInfo or type(line) ~= 'string' then
+        return
+    end
+
+    local lowerLine = line:lower()
+    if not lowerLine:find(sourceInfo.name:lower(),1,true)
+    or (not lowerLine:find(' says',1,true)
+        and not lowerLine:find(' tells you',1,true))
+    then
+        return
+    end
+
+    table.insert(State.progressReports,{
+        source=sourceInfo.name,
+        text=line,
+    })
+    if #State.progressReports > 100 then
+        table.remove(State.progressReports,1)
+    end
+
+    local disposition = GetProgressDisposition(line)
+    local matchedItems = {}
+    local category = InstanceCategories[sourceInfo.categoryIndex]
+
+    for tierIndex,tier in ipairs(category.tiers) do
+        for targetIndex,target in ipairs(GetInstanceTargets(tier)) do
+            if ProgressTargetMatches(line,target) then
+                table.insert(matchedItems,{
+                    key=ProgressKey(
+                        sourceInfo.categoryIndex,
+                        tierIndex,
+                        targetIndex
+                    ),
+                })
+            end
+        end
+    end
+
+    for _,flag in ipairs(State.sideFlags) do
+        if ProgressTargetMatches(line,flag.name) then
+            table.insert(matchedItems,{flag=flag})
+        end
+    end
+
+    local matchedTargets = #matchedItems
+    local matchedStatuses = 0
+    local changes = 0
+    if matchedTargets == 1 and disposition ~= nil then
+        matchedStatuses = 1
+        local item = matchedItems[1]
+        if item.key then
+            local wasDone = State.progressDone[item.key] == true
+            if wasDone ~= disposition then
+                State.progressDone[item.key] = disposition and true or nil
+                changes = changes + 1
+            end
+        elseif item.flag.done ~= disposition then
+            item.flag.done = disposition
+            changes = changes + 1
+        end
+    end
+
+    if changes > 0 then
+        State.progressPendingSave = true
+        State.progressPendingChanges = State.progressPendingChanges + changes
+        State.progressStatus = string.format(
+            'Progress update from %s will be saved shortly.',
+            sourceInfo.name
+        )
+    elseif matchedTargets > 1 and disposition ~= nil then
+        State.progressStatus = string.format(
+            'Captured %s dialogue, but its status applies to multiple tracked items; review it manually.',
+            sourceInfo.name
+        )
+    elseif matchedStatuses > 0 then
+        State.progressStatus = string.format(
+            '%s confirmed %d progress item(s); no changes were needed.',
+            sourceInfo.name,
+            matchedStatuses
+        )
+    elseif matchedTargets > 0 then
+        State.progressStatus = string.format(
+            'Found %d tracked item(s) in %s dialogue, but no explicit completion status.',
+            matchedTargets,
+            sourceInfo.name
+        )
+    else
+        State.progressStatus = string.format(
+            'Captured %s dialogue; no tracked names were recognized.',
+            sourceInfo.name
+        )
+    end
+end
+
+local function NormalizeProgressName(value)
+    local normalized = (value or ''):lower():gsub('%b()',' ')
+    normalized = normalized:gsub('[%p]',' ')
+    normalized = normalized:gsub('%s+',' ')
+    return normalized:gsub('^%s+',''):gsub('%s+$','')
+end
+
+local function TrackKilledTarget(mobName)
+    local normalizedMob = NormalizeProgressName(mobName)
+    if normalizedMob == '' then
+        return 0
+    end
+
+    local changes = 0
+    for categoryIndex=1,2 do
+        local category = InstanceCategories[categoryIndex]
+        for tierIndex,tier in ipairs(category.tiers) do
+            for targetIndex,target in ipairs(GetInstanceTargets(tier)) do
+                local targetName = target:match('^(.-)%s*%(') or target
+                if NormalizeProgressName(targetName) == normalizedMob then
+                    local key = ProgressKey(
+                        categoryIndex,
+                        tierIndex,
+                        targetIndex
+                    )
+                    if not State.progressDone[key] then
+                        State.progressDone[key] = true
+                        changes = changes + 1
+                    end
+                end
+            end
+        end
+    end
+
+    for _,flag in ipairs(State.sideFlags) do
+        local flagTarget = flag.name
+            :gsub('^[Kk][Ii][Ll][Ll]%s+','')
+            :gsub('^[Dd][Ee][Ff][Ee][Aa][Tt]%s+','')
+        if not flag.done
+        and NormalizeProgressName(flagTarget) == normalizedMob
+        then
+            flag.done = true
+            changes = changes + 1
+        end
+    end
+
+    return changes
+end
+
+local function HandleKilledMob(mobName)
+    if not State.autoTrackProgressLogs or type(mobName) ~= 'string' then
+        return
+    end
+
+    local ok,changes = pcall(TrackKilledTarget,mobName)
+    if not ok then
+        State.progressStatus = 'Could not track kill progress: '..tostring(changes)
+        return
+    end
+
+    if changes > 0 then
+        State.progressPendingSave = true
+        State.progressPendingChanges = State.progressPendingChanges + changes
+        State.progressStatus = string.format(
+            'Tracking %s from the kill message.',
+            mobName
+        )
+    end
+end
+
+local RegisterProgressEvents
+
+local function DrawMightProgressUI()
+    local totalTargets = 0
+    local doneTargets = 0
+
+    for categoryIndex,category in ipairs(InstanceCategories) do
+        for tierIndex,tier in ipairs(category.tiers) do
+            for targetIndex=1,CountTargets(tier) do
+                totalTargets = totalTargets + 1
+                local isDone = State.progressDone[ProgressKey(
+                    categoryIndex,
+                    tierIndex,
+                    targetIndex
+                )] == true
+                if isDone then
+                    doneTargets = doneTargets + 1
+                end
+            end
+        end
+    end
+
+    ImGui.TextColored(0.35,0.82,1,1,'MIGHT TARGET CHECKLIST')
+    ImGui.TextDisabled('Manually track Solo / Duo, Group, and custom side-flag goals.')
+    if ImGui.CollapsingHeader(string.format(
+        'Recent NPC responses (%d)##progress_npc_responses',
+        #State.progressReports
+    )) then
+        if #State.progressReports == 0 then
+            ImGui.TextDisabled('No progress dialogue captured yet.')
+        else
+            if ImGui.SmallButton('Clear responses##progress_npc_responses') then
+                State.progressReports = {}
+            end
+            for index,report in ipairs(State.progressReports) do
+                ImGui.PushID('progress_report_'..index)
+                ImGui.TextDisabled(report.source..':')
+                ImGui.TextWrapped(report.text)
+                ImGui.PopID()
+            end
+        end
+    end
+
+    ImGui.Text(string.format(
+        'Suggested targets complete: %d / %d',
+        doneTargets,
+        totalTargets
+    ))
+    ImGui.ProgressBar(
+        totalTargets > 0 and doneTargets / totalTargets or 0,
+        -1,
+        0,
+        string.format('%d%%',totalTargets > 0 and math.floor(doneTargets * 100 / totalTargets) or 0)
+    )
+    ImGui.TextDisabled('Only explicit target/status pairs from these NPC reports auto-sync; mark other results manually.')
+
+    State.progressFilter = DrawCombo(
+        'Show progression',
+        State.progressFilter,
+        {'All targets','Needs doing','Done'},
+        'progress_filter'
+    )
+
+    local visibleTargets = 0
+    for categoryIndex,category in ipairs(InstanceCategories) do
+        for tierIndex,tier in ipairs(category.tiers) do
+            for targetIndex=1,CountTargets(tier) do
+                local isDone = State.progressDone[ProgressKey(
+                    categoryIndex,
+                    tierIndex,
+                    targetIndex
+                )] == true
+                if ProgressMatchesFilter(isDone) then
+                    visibleTargets = visibleTargets + 1
+                end
+            end
+        end
+    end
+
+    if visibleTargets == 0 then
+        ImGui.TextDisabled('No instance targets match this filter.')
+    end
+
+    for categoryIndex,category in ipairs(InstanceCategories) do
+        local categoryDone = 0
+        local categoryTotal = 0
+        local categoryVisible = false
+        for tierIndex,tier in ipairs(category.tiers) do
+            for targetIndex=1,CountTargets(tier) do
+                categoryTotal = categoryTotal + 1
+                local isDone = State.progressDone[ProgressKey(
+                    categoryIndex,
+                    tierIndex,
+                    targetIndex
+                )] == true
+                if isDone then
+                    categoryDone = categoryDone + 1
+                end
+                if ProgressMatchesFilter(isDone) then
+                    categoryVisible = true
+                end
+            end
+        end
+
+        if categoryVisible and ImGui.CollapsingHeader(string.format(
+            '%s (%d/%d)',
+            category.name,
+            categoryDone,
+            categoryTotal
+        )) then
+            for tierIndex,tier in ipairs(category.tiers) do
+                local targets = GetInstanceTargets(tier)
+                local tierDone = 0
+                local tierVisible = 0
+                for targetIndex=1,#targets do
+                    local isDone = State.progressDone[ProgressKey(
+                        categoryIndex,
+                        tierIndex,
+                        targetIndex
+                    )] == true
+                    if isDone then
+                        tierDone = tierDone + 1
+                    end
+                    if ProgressMatchesFilter(isDone) then
+                        tierVisible = tierVisible + 1
+                    end
+                end
+
+                if tierVisible > 0 and ImGui.CollapsingHeader(string.format(
+                    '%s (%d/%d)##progress_tier_%d_%d',
+                    tier.name,
+                    tierDone,
+                    #targets,
+                    categoryIndex,
+                    tierIndex
+                )) then
+                    for targetIndex,target in ipairs(targets) do
+                        local key = ProgressKey(
+                            categoryIndex,
+                            tierIndex,
+                            targetIndex
+                        )
+                        local isDone = State.progressDone[key] == true
+                        if ProgressMatchesFilter(isDone) then
+                            local label = string.format(
+                                '%s##progress_target_%d_%d_%d',
+                                target,
+                                categoryIndex,
+                                tierIndex,
+                                targetIndex
+                            )
+                            local updatedDone,changed = ImGui.Checkbox(label,isDone)
+                            if changed then
+                                State.progressDone[key] = updatedDone and true or nil
+                                SaveProgressChanges()
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    ImGui.Separator()
+    ImGui.TextColored(0.35,0.82,1,1,'SIDE FLAGS')
+    ImGui.TextDisabled('Add server-specific side flags or goals here; check them off when complete.')
+    local completedFlags = 0
+    for _,flag in ipairs(State.sideFlags) do
+        if flag.done then
+            completedFlags = completedFlags + 1
+        end
+    end
+    ImGui.Text(string.format(
+        'Side flags complete: %d / %d',
+        completedFlags,
+        #State.sideFlags
+    ))
+
+    State.newSideFlagName = ImGui.InputText(
+        'New side flag',
+        State.newSideFlagName,
+        80
+    )
+    ImGui.SameLine()
+    if ImGui.Button('Add side flag') then
+        local name = (State.newSideFlagName or ''):gsub('^%s+',''):gsub('%s+$','')
+        if name == '' then
+            State.progressStatus = 'Enter a name for the side flag.'
+        else
+            local duplicate = false
+            for _,flag in ipairs(State.sideFlags) do
+                if flag.name:lower() == name:lower() then
+                    duplicate = true
+                    break
+                end
+            end
+
+            if duplicate then
+                State.progressStatus = 'That side flag is already tracked.'
+            else
+                table.insert(State.sideFlags,{
+                    id=State.nextSideFlagID,
+                    name=name,
+                    done=false,
+                })
+                State.nextSideFlagID = State.nextSideFlagID + 1
+                State.newSideFlagName = ''
+                SaveProgressChanges()
+            end
+        end
+    end
+
+    for index=#State.sideFlags,1,-1 do
+        local flag = State.sideFlags[index]
+        if ProgressMatchesFilter(flag.done) then
+            ImGui.PushID('side_flag_'..flag.id)
+            local updatedDone,changed = ImGui.Checkbox(
+                'Done##side_flag_'..flag.id,
+                flag.done
+            )
+            if changed then
+                flag.done = updatedDone
+                SaveProgressChanges()
+            end
+            ImGui.SameLine()
+            ImGui.Text(flag.name)
+            ImGui.SameLine()
+            if ImGui.SmallButton('Remove') then
+                table.remove(State.sideFlags,index)
+                SaveProgressChanges()
+            end
+            ImGui.PopID()
+        end
+    end
+
+    ImGui.Separator()
+    ImGui.TextDisabled(State.progressStatus)
+end
+
+local function SetProgressLogTracking(enabled)
+    State.autoTrackProgressLogs = enabled
+    State.progressEventsPending = enabled
+
+    if SaveProgressChanges() then
+        State.progressStatus = enabled
+            and 'Automatic chat/log tracking enabled.'
+            or 'Automatic tracking disabled; manual checklist remains available.'
+    end
+end
+
+local function DrawGuideUI()
+    ImGui.BeginChild('##guide_nav',200,0,true)
+    for _,section in ipairs(GuideSections) do
+        if ImGui.Selectable(section.label..'##guide_'..section.id,State.selectedProgressPage == section.id) then
+            State.selectedProgressPage = section.id
+        end
+    end
+    ImGui.EndChild()
+
+    ImGui.SameLine()
+    ImGui.BeginChild('##guide_content',0,0,true)
+    for _,section in ipairs(GuideSections) do
+        if section.id == State.selectedProgressPage then
+            ImGui.TextColored(0.92,0.70,0.25,1,section.label)
+            ImGui.Separator()
+            for _,line in ipairs(section.lines) do
+                ImGui.Bullet()
+                ImGui.TextWrapped(line)
+            end
+        end
+    end
+    ImGui.Spacing()
+    ImGui.TextDisabled('Source: https://www.eqmight.com')
+    ImGui.EndChild()
+end
+
+local function DrawProgressionUI()
+    local autoTrack,autoTrackChanged = ImGui.Checkbox(
+        'Track NPC replies from chat (optional)##progress_auto',
+        State.autoTrackProgressLogs
+    )
+    if autoTrackChanged then
+        SetProgressLogTracking(autoTrack)
+    end
+    ImGui.SameLine()
+    ImGui.TextDisabled('Hail Lady Maria Luisa / Sir Daniel; manual checkboxes always work.')
+
+    if ImGui.BeginTabBar('##progression_views') then
+        if ImGui.BeginTabItem('Checklist') then
+            DrawMightProgressUI()
+            ImGui.EndTabItem()
+        end
+        if ImGui.BeginTabItem('Guide') then
+            DrawGuideUI()
+            ImGui.EndTabItem()
+        end
+        ImGui.EndTabBar()
+    end
+end
+
+local function WaitForCondition(condition,timeoutMs)
+    local elapsed = 0
+    while elapsed < timeoutMs do
+        if condition() then return true end
+        mq.delay(100)
+        elapsed = elapsed + 100
+    end
+    return false
+end
+
+-- Opens the inventory's Alt Currency page (controls from autoclaim.lua), runs fn, then restores the window.
+local function WithCurrencyPage(showAllCurrencies,fn)
+    local inventory = mq.TLO.Window('InventoryWindow')
+    local wasOpen = inventory() and inventory.Open()
+    if not wasOpen then
+        inventory.DoOpen()
+        if not WaitForCondition(function() return inventory() and inventory.Open() end,5000) then
+            return false,'Could not open the inventory window.'
+        end
+    end
+
+    local tabBox = inventory.Child('IW_Subwindows')
+    local function tabName()
+        return tabBox.CurrentTab and tabBox.CurrentTab.Name and tabBox.CurrentTab.Name() or ''
+    end
+    local found = false
+    local originalTab = tabBox.CurrentTabIndex and tonumber(tabBox.CurrentTabIndex()) or nil
+    for i=1,tonumber(tabBox.TabCount() or 0) do
+        tabBox.SetCurrentTab(i)
+        mq.delay(250)
+        if tabName() == 'IW_AltCurrPage' then
+            found = true
+            break
+        end
+    end
+
+    local result
+    if found then
+        local showAll = inventory.Child('IW_AltCurr_DisplayMissingButton')
+        local toggled = false
+        if showAllCurrencies and showAll() and not showAll.Checked() then
+            showAll.LeftMouseUp()
+            toggled = true
+            mq.delay(300)
+        end
+
+        local ok,value = pcall(fn,inventory,tabName)
+        result = ok and value or nil
+
+        if toggled and showAll.Checked() then
+            showAll.LeftMouseUp()
+            mq.delay(100)
+        end
+    end
+
+    if originalTab and originalTab > 0 then
+        tabBox.SetCurrentTab(originalTab)
+    end
+    if not wasOpen then
+        inventory.DoClose()
+    end
+
+    if not found then
+        return false,'Could not find the Alt Currency page.'
+    end
+    return true,result
+end
+
+local function ReclaimCurrencies()
+    local ok,result = WithCurrencyPage(false,function(inventory,tabName)
+        local list = inventory.Child('IW_AltCurr_PointList')
+        local button = inventory.Child('IW_AltCurr_ReclaimButton')
+        if not list() or not button() then return 0 end
+
+        local reclaimed = 0
+        for row=1,tonumber(list.Items() or 0) or 0 do
+            if not inventory.Open() or tabName() ~= 'IW_AltCurrPage' then break end
+            list.Select(row)
+            mq.delay(100,function() return list.SelectedIndex() == row end)
+            button.LeftMouseUp()
+            reclaimed = reclaimed + 1
+            mq.delay(50)
+        end
+        return reclaimed
+    end)
+
+    State.progressStatus = ok
+        and string.format('Reclaimed %d currency entries.',tonumber(result) or 0)
+        or result
+end
+
+-- Reads currency names from the Alt Currency page.
+local function ScanCurrencies()
+    local ok,names = WithCurrencyPage(true,function(inventory)
+        local list = inventory.Child('IW_AltCurr_PointList')
+        local found = {}
+        for row=1,tonumber(list.Items() or 0) or 0 do
+            for column=1,3 do
+                local text = list.List(row,column)()
+                if text and text ~= '' and not tonumber((text:gsub(',',''))) then
+                    found[#found + 1] = text
+                    break
+                end
+            end
+        end
+        return found
+    end)
+
+    if not ok then
+        State.progressStatus = names
+        return
+    end
+    if type(names) ~= 'table' or #names == 0 then
+        State.progressStatus = 'Currency list was empty; nothing changed.'
+        return
+    end
+
+    State.altCurrencies = {}
+    for _,name in ipairs(names) do
+        if not FindAltCurrency(name) then
+            table.insert(State.altCurrencies,{name=name,custom=true})
+        end
+    end
+    SaveProgressChanges()
+    State.progressStatus = string.format('Found %d currencies from your inventory.',#State.altCurrencies)
+end
+
+local function GetCurrencyBalance(currency)
+    local balance
+    if not currency.itemOnly then
+        local ok,value = pcall(function()
+            return mq.TLO.Me.AltCurrency(currency.name)()
+        end)
+        balance = ok and tonumber(value) or nil
+    end
+    local okBags,inBags = pcall(function()
+        return mq.TLO.FindItemCount('='..currency.name)()
+    end)
+    return balance,okBags and tonumber(inBags) or 0
+end
+
+local function DrawAltCurrencyUI()
+    ImGui.TextColored(0.92,0.70,0.25,1,'ALTERNATE CURRENCY')
+    ImGui.TextDisabled('Balances are read live by name. Unreclaimed tokens in your bags are counted separately.')
+    if ImGui.Button('Scan currencies from inventory') then
+        State.currencyScanRequested = true
+        State.progressStatus = 'Scanning currencies...'
+    end
+    ImGui.SameLine()
+    ImGui.TextDisabled('Opens your inventory briefly and lists every server currency.')
+    if ImGui.Button('Reclaim all tokens') then
+        State.currencyReclaimRequested = true
+        State.progressStatus = 'Reclaiming currencies...'
+    end
+    ImGui.SameLine()
+    ImGui.TextDisabled('Same as Inventory > Alternate Currencies > Reclaim for every entry.')
+
+    if ImGui.BeginTable(
+        '##alt_currency_balances',
+        4,
+        ImGuiTableFlags.Borders + ImGuiTableFlags.RowBg,
+        0,
+        260
+    ) then
+        ImGui.TableSetupColumn('Currency',ImGuiTableColumnFlags.WidthStretch)
+        ImGui.TableSetupColumn('Balance',ImGuiTableColumnFlags.WidthFixed,90)
+        ImGui.TableSetupColumn('In bags',ImGuiTableColumnFlags.WidthFixed,90)
+        ImGui.TableSetupColumn('',ImGuiTableColumnFlags.WidthFixed,70)
+        ImGui.TableHeadersRow()
+
+        for index,currency in ipairs(State.altCurrencies) do
+            ImGui.TableNextRow()
+            ImGui.TableSetColumnIndex(0)
+            ImGui.Text(currency.name)
+            if currency.note and ImGui.IsItemHovered() then
+                ImGui.SetTooltip(currency.note)
+            end
+
+            local balance,inBags = GetCurrencyBalance(currency)
+            ImGui.TableSetColumnIndex(1)
+            if currency.itemOnly then
+                ImGui.TextDisabled('item')
+            elseif balance == nil then
+                ImGui.TextDisabled('n/a')
+            else
+                ImGui.Text(tostring(balance))
+            end
+
+            ImGui.TableSetColumnIndex(2)
+            ImGui.Text(tostring(inBags))
+
+            ImGui.TableSetColumnIndex(3)
+            if currency.custom and ImGui.SmallButton('Remove##currency_'..index) then
+                table.remove(State.altCurrencies,index)
+                SaveProgressChanges()
+                break
+            end
+        end
+
+        ImGui.EndTable()
+    end
+    ImGui.TextDisabled('Hover a currency for how it is used. "n/a" means the name was not recognised; check the exact in-game spelling.')
+
+    State.newAltCurrencyName = ImGui.InputText(
+        'Track currency',
+        State.newAltCurrencyName,
+        64
+    )
+    ImGui.SameLine()
+    if ImGui.Button('Add currency') then
+        local name = (State.newAltCurrencyName or ''):gsub('^%s+',''):gsub('%s+$','')
+        if name == '' then
+            State.progressStatus = 'Enter a currency name to track.'
+        elseif FindAltCurrency(name) then
+            State.progressStatus = 'That currency is already tracked.'
+        else
+            table.insert(State.altCurrencies,{name=name,custom=true})
+            State.newAltCurrencyName = ''
+            SaveProgressChanges()
+        end
+    end
+
+    ImGui.TextDisabled(State.progressStatus)
+end
+
+-- Highest-requirement mode the party's Might still meets (the easiest expected result).
+local function ExpectedMode(suggestedMight,might)
+    local best
+    for _,mode in ipairs(DifficultyModes) do
+        if might >= math.floor(suggestedMight * mode.multiplier + 0.5) then
+            if not best or mode.multiplier > best.multiplier then
+                best = mode
+            end
+        end
+    end
+    return best
+end
+
+local function DrawNextUp(categoryIndex,might)
+    local category = InstanceCategories[categoryIndex]
+    for tierIndex,tier in ipairs(category.tiers) do
+        local targets = GetInstanceTargets(tier)
+        local remaining = {}
+        for targetIndex,target in ipairs(targets) do
+            if not State.progressDone[ProgressKey(categoryIndex,tierIndex,targetIndex)] then
+                remaining[#remaining + 1] = target
+            end
+        end
+
+        if #remaining > 0 then
+            ImGui.TextColored(0.92,0.70,0.25,1,category.name..': '..tier.name)
+            ImGui.Text(string.format('%d of %d targets left. Suggested Might %s.',#remaining,#targets,FormatMight(tier.might or 0)))
+            local mode = ExpectedMode(tier.might or 0,might)
+            if mode then
+                ImGui.TextColored(0.55,0.85,0.45,1,'Your Might ('..FormatMight(might)..') should clear '..mode.name..' or better.')
+            else
+                ImGui.TextColored(1,0.55,0.35,1,'Your Might ('..FormatMight(might)..') is below the lowest mode. Level, AAs, or a ring rank first.')
+            end
+            ImGui.TextWrapped('Up next: '..table.concat(remaining,', '))
+            ImGui.Spacing()
+            return
+        end
+    end
+    ImGui.TextColored(0.55,0.85,0.45,1,category.name..': every target is checked off.')
+    ImGui.Spacing()
+end
+
+local function DrawTodayUI()
+    local level = mq.TLO.Me.Level() or 0
+    local solo = GetCharacterMight(State.currentIndex)
+    local party = #State.party > 1 and GetPartyMight(State.currentIndex) or solo
+    local ring = Rings[State.currentIndex]
+
+    ImGui.TextColored(0.92,0.70,0.25,1,'TODAY')
+    ImGui.Text(string.format(
+        '%s, level %d. Ring: %s. Personal Might %s%s.',
+        mq.TLO.Me.CleanName() or 'You',
+        level,
+        ring and ring.name or 'none',
+        FormatMight(solo),
+        #State.party > 1 and (', group Might '..FormatMight(party)) or ''
+    ))
+    ImGui.Separator()
+
+    ImGui.TextColored(0.92,0.70,0.25,1,'NEXT PROGRESSION TARGETS')
+    DrawNextUp(1,#State.party > 2 and solo or party)
+    DrawNextUp(2,party)
+    ImGui.TextDisabled('Check targets off on the Progression tab. Estimates come from the Might calculator and are planning aids.')
+    ImGui.Separator()
+
+    ImGui.TextColored(0.92,0.70,0.25,1,'TOKENS AND SHOPPING')
+    local might,epic,legendary = 0,0,0
+    for _,pair in ipairs({
+        {'Token of Might',1},{'Token of Epic Might',2},{'Token of Legendary Might',3},
+    }) do
+        local balance,inBags = GetCurrencyBalance({name=pair[1]})
+        local total = (balance or 0) + inBags
+        if pair[2] == 1 then might = total elseif pair[2] == 2 then epic = total else legendary = total end
+        ImGui.Text(string.format('%s: %d%s',pair[1],balance or 0,inBags > 0 and (' (+'..inBags..' unreclaimed)') or ''))
+    end
+    ImGui.TextDisabled(string.format(
+        'Walter: %d Epic from your Might tokens (10 each, needs 1 Invaluable Coin), %d Legendary from your Epic tokens (6 each, needs 2).',
+        math.floor(might / 10),
+        math.floor(epic / 6)
+    ))
+    ImGui.TextDisabled(string.format('Cloe: %d Epic 1.0 weapon(s) at 2 Epic tokens each. Legendary tokens held: %d.',math.floor(epic / 2),legendary))
+    if ImGui.Button('Reclaim all tokens##today') then
+        State.currencyReclaimRequested = true
+        State.progressStatus = 'Reclaiming currencies...'
+    end
+    ImGui.SameLine()
+    ImGui.TextDisabled(State.progressStatus)
+end
+
 local function DrawRingUI()
 
     RefreshRing()
 
     local ring = GetEquippedRing()
-    ImGui.TextColored(0.35,0.82,1,1,'WARDEN RING MANAGER')
+    ImGui.TextColored(0.35,0.82,1,1,'WARDEN RING SWAPPER')
 
     if ring then
         local current = Rings[State.currentIndex]
@@ -1815,43 +2942,246 @@ local function DrawRingUI()
     ImGui.Text(State.status)
 end
 
+local GrimoireColors = {
+    {'WindowBg',0.13,0.08,0.05,0.98},
+    {'ChildBg',0.18,0.12,0.07,0.95},
+    {'PopupBg',0.15,0.10,0.06,0.98},
+    {'Border',0.55,0.40,0.18,0.90},
+    {'Text',0.93,0.85,0.66,1},
+    {'TextDisabled',0.60,0.52,0.38,1},
+    {'FrameBg',0.24,0.16,0.09,1},
+    {'FrameBgHovered',0.34,0.23,0.12,1},
+    {'FrameBgActive',0.42,0.28,0.14,1},
+    {'TitleBg',0.22,0.10,0.07,1},
+    {'TitleBgActive',0.36,0.12,0.08,1},
+    {'Button',0.40,0.16,0.10,1},
+    {'ButtonHovered',0.55,0.22,0.12,1},
+    {'ButtonActive',0.68,0.28,0.14,1},
+    {'Header',0.32,0.18,0.09,1},
+    {'HeaderHovered',0.48,0.28,0.12,1},
+    {'HeaderActive',0.58,0.34,0.14,1},
+    {'Tab',0.26,0.14,0.08,1},
+    {'TabHovered',0.55,0.30,0.12,1},
+    {'TabActive',0.42,0.20,0.10,1},
+    {'TabSelected',0.42,0.20,0.10,1},
+    {'CheckMark',0.92,0.70,0.25,1},
+    {'PlotHistogram',0.62,0.18,0.12,1},
+    {'Separator',0.55,0.40,0.18,0.70},
+    {'ScrollbarBg',0.12,0.07,0.04,1},
+    {'ScrollbarGrab',0.45,0.30,0.14,1},
+    {'TableHeaderBg',0.30,0.16,0.09,1},
+    {'TableRowBgAlt',0.20,0.13,0.07,0.60},
+}
+
+local function PushGrimoireTheme()
+    local pushed = 0
+    for _,entry in ipairs(GrimoireColors) do
+        local colorID = ImGuiCol and ImGuiCol[entry[1]]
+        if colorID then
+            ImGui.PushStyleColor(colorID,entry[2],entry[3],entry[4],entry[5])
+            pushed = pushed + 1
+        end
+    end
+    return pushed
+end
+
 local function DrawUI()
+    ImGui.SetNextWindowSize(1100,780,ImGuiCond.FirstUseEver)
+    local pushedColors = PushGrimoireTheme()
+    ImGui.PushStyleVar(ImGuiStyleVar.WindowRounding,6)
+    ImGui.PushStyleVar(ImGuiStyleVar.FrameRounding,4)
+    ImGui.PushStyleVar(ImGuiStyleVar.ChildRounding,4)
+    ImGui.PushStyleVar(ImGuiStyleVar.WindowBorderSize,2)
+    ImGui.PushStyleVar(ImGuiStyleVar.ItemSpacing,10,8)
+    local draw = false
+    State.open,draw = ImGui.Begin('EQMight Grimoire',State.open)
 
-    State.open = ImGui.Begin('Warden Ring Manager',State.open)
+    if draw then
+        RefreshRing()
+        ImGui.TextColored(0.92,0.70,0.25,1,'~ EQMIGHT GRIMOIRE ~')
+        ImGui.SameLine()
+        ImGui.TextDisabled('Progression, Might, Rings, Currency, Pearls')
+        ImGui.Separator()
 
-    RefreshRing()
+        if ImGui.BeginTabBar('##companion_tabs') then
+            if ImGui.BeginTabItem('Today') then
+                DrawTodayUI()
+                ImGui.EndTabItem()
+            end
 
-    DrawRingUI()
-    ImGui.Separator()
-    DrawMightUI()
-    ImGui.Separator()
-    DrawPartyMight()
+            if ImGui.BeginTabItem('Progression') then
+                DrawProgressionUI()
+                ImGui.EndTabItem()
+            end
+
+            if ImGui.BeginTabItem('Might & Dungeons') then
+                DrawMightUI()
+                ImGui.Separator()
+                DrawPartyMight()
+                ImGui.EndTabItem()
+            end
+
+            if ImGui.BeginTabItem('Rings') then
+                DrawRingUI()
+                ImGui.EndTabItem()
+            end
+
+            if ImGui.BeginTabItem('Currency') then
+                DrawAltCurrencyUI()
+                ImGui.EndTabItem()
+            end
+
+            if ImGui.BeginTabItem('Pearls') then
+                if State.pearlTrackerReady then
+                    local pearlOK,pearlError = pcall(PearlUI.renderEmbedded)
+                    if not pearlOK then
+                        ImGui.TextColored(1,0.35,0.35,1,'Pearl Tracker render error:')
+                        ImGui.TextWrapped(tostring(pearlError))
+                    end
+                else
+                    ImGui.TextColored(1,0.65,0.35,1,'Pearl Tracker is unavailable.')
+                    ImGui.TextWrapped(State.pearlTrackerError)
+                end
+                ImGui.EndTabItem()
+            end
+
+            ImGui.EndTabBar()
+        end
+    end
 
     if not State.open then
         State.swapRequested = false
     end
 
     ImGui.End()
+    ImGui.PopStyleVar(5)
+    if pushedColors > 0 then
+        ImGui.PopStyleColor(pushedColors)
+    end
 end
 
+local function HandleProgressLogAction(action,targetText)
+    if action == 'kill' and type(targetText) == 'string' then
+        HandleKilledMob(targetText)
+    end
+end
+
+RegisterProgressEvents = function()
+    mq.event(
+        'project_might_progress_kill',
+        '#*#You have slain #1#.#*#',
+        function(_,mobName)
+            if State.autoTrackProgressLogs then
+                HandleProgressLogAction('kill',mobName)
+            end
+        end
+    )
+    mq.event(
+        'warden_companion_solo_progress',
+        '#*#Lady Maria Luisa#*#',
+        function(line)
+            HandleProgressReport('solo',line)
+        end
+    )
+    mq.event(
+        'warden_companion_group_progress',
+        '#*#Sir Daniel#*#',
+        function(line)
+            HandleProgressReport('group',line)
+        end
+    )
+end
+
+for _,currency in ipairs(DefaultCurrencies) do
+    table.insert(State.altCurrencies,{
+        name=currency.name,
+        note=currency.note,
+        itemOnly=currency.itemOnly,
+        custom=false,
+    })
+end
 RefreshRing()
 State.targetIndex = State.currentIndex
 State.draftRingIndex = State.currentIndex
 RefreshParty()
 LoadLoadouts()
+LoadProgress()
 ScanAvailableAugs()
 LoadDraftFromEquippedRing()
-
+if State.autoTrackProgressLogs then
+    RegisterProgressEvents()
+end
+local pearlInitOK,pearlReady = pcall(PearlNetwork.init)
+if pearlInitOK and pearlReady then
+    local pearlDataOK,pearlError = pcall(function()
+        PearlNetwork.broadcastMyData()
+        PearlNetwork.requestAllData()
+    end)
+    State.pearlTrackerReady = pearlDataOK
+    State.pearlTrackerError = pearlDataOK
+        and ''
+        or tostring(pearlError)
+else
+    State.pearlTrackerError = pearlInitOK
+        and 'Could not register the Pearl Tracker actor mailbox.'
+        or tostring(pearlReady)
+end
 mq.imgui.init(
-    'WardenRingManager',
+    'EQMightGrimoire',
     DrawUI
 )
 
 while State.open do
     mq.delay(100)
+    if State.progressEventsPending ~= nil then
+        if State.progressEventsPending then
+            RegisterProgressEvents()
+        else
+            mq.unevent('project_might_progress_kill')
+            mq.unevent('warden_companion_solo_progress')
+            mq.unevent('warden_companion_group_progress')
+        end
+        State.progressEventsPending = nil
+    end
+    if State.pearlTrackerReady or State.autoTrackProgressLogs then
+        mq.doevents()
+    end
+
+    if State.progressPendingSave then
+        local syncedCount = State.progressPendingChanges
+        if SaveProgressChanges() then
+            State.progressStatus = string.format(
+                'Saved %d automatic progress update(s).',
+                syncedCount
+            )
+        else
+            State.progressPendingSave = false
+            State.progressPendingChanges = 0
+        end
+    end
+
+    if State.currencyScanRequested then
+        State.currencyScanRequested = false
+        local ok,scanError = pcall(ScanCurrencies)
+        if not ok then
+            State.progressStatus = 'Currency scan failed: '..tostring(scanError)
+        end
+    end
+
+    if State.currencyReclaimRequested then
+        State.currencyReclaimRequested = false
+        local ok,reclaimError = pcall(ReclaimCurrencies)
+        if not ok then
+            State.progressStatus = 'Reclaim failed: '..tostring(reclaimError)
+        end
+    end
 
     if State.swapRequested then
         State.swapRequested = false
         Execute()
     end
 end
+
+mq.unevent('warden_companion_solo_progress')
+mq.unevent('warden_companion_group_progress')
+mq.unevent('project_might_progress_kill')

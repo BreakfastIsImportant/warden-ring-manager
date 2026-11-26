@@ -1,15 +1,17 @@
-# 💍 Warden Ring Manager
+# 📖 EQMight Grimoire
 
-### A safer, smarter ring swap — with a Might planner built in.
+### Your in-game guide to Might, progression, and server systems.
 
-Manage Warden ring upgrades, plan augment setups, and compare your current and projected Might from one MacroQuest window.
+Manage Warden ring upgrades and augment loadouts, plan Might and dungeon targets, track progression and side flags, and review alternate-currency balances from one MacroQuest window.
 
-> **Built for MacroQuest Lua** · Ring swaps · Saved aug loadouts · Might planning
+> **Built for MacroQuest Lua** · Ring swaps · Saved aug loadouts · Might and dungeon planning
 
 ## ✨ Features
 
 | | Feature | What it does |
 |---|---|---|
+| 🗂️ | **Grimoire UI** | Parchment-and-ember themed window with tabs for Today, Progression, Might & Dungeons, Rings, Currency, and Pearls. |
+| 📜 | **Today dashboard** | Your Might, the next unfinished Solo/Duo and Group targets with the expected difficulty mode, token balances, and what Walter and Cloe can sell you. |
 | 💍 | **Warden ring swaps** | Recognizes supported ring ranks and variants, handles Pietri hand-ins, and tracks swap progress. |
 | 🧭 | **MQ2Nav travel** | Navigates to Pietri when you are too far away. Requires MQ2Nav to be loaded and Pietri to be present in the zone. |
 | 🛡️ | **Augment safeguards** | Removes installed augments before hand-ins, handles confirmation dialogs, checks cursor state, and verifies augment insertion. Stops and reports a status if a step fails. |
@@ -17,25 +19,35 @@ Manage Warden ring upgrades, plan augment setups, and compare your current and p
 | 🔎 | **Compact augment browser** | Groups augments by type, filters to the selected slot, and shows icons and key stats. Hover for more stats; right-click to link an item in game. |
 | 📊 | **Might calculator** | Compare your current and projected Might, including party estimates and the selected ring's contribution. |
 | 🏰 | **Instance planner** | Browse Solo/Duo, Group, and Raid progression suggestions, difficulty estimates, and suggested Might. |
-| 🪟 | **Single-screen UI** | Ring controls, loadouts, and Might planning flow together in one ImGui window. |
+| ✅ | **Progression tracker** | A Checklist of Solo/Duo and Group instance targets plus custom side flags, and a Guide drawn from eqmight.com (how Might works, progression path, key NPCs, currency flow, Warden rings). Optional chat tracking of Lady Maria Luisa / Sir Daniel replies. |
+| 💰 | **Currency** | Live balances for Token of Might, Token of Epic Might, Token of Legendary Might, plus Invaluable Coin counts in bags. Add other exact names as needed. |
+| ⚪ | **Pearl Tracker** | View local and connected-toon pearl progress inside the companion window. |
+| 🪟 | **One window** | Access the ring and progression-planning tools from one ImGui window. |
+
+## 🧭 About
+
+The tracker is EQ Might only: manual checkboxes always work, and the optional **Track NPC replies from chat** setting (off by default) parses new chat lines from Lady Maria Luisa and Sir Daniel; it does not read historical log files. Checklist state, side flags, and custom currencies save per character.
 
 ## 🚀 Install
 
-1. Copy `ring.lua` into your MacroQuest `lua` directory.
-2. Make sure MacroQuest's Lua and ImGui support are available.
-3. Load **MQ2Nav** if you want automatic travel to Pietri.
-4. In game, run:
+1. Copy `warden-ring-manager/grimoire.lua` to your MacroQuest `lua` directory as `grimoire.lua`.
+2. Copy the `pt-main` folder into the same `lua` directory, preserving its name and contents.
+3. Make sure MacroQuest's Lua and ImGui support are available.
+4. Load **MQ2Nav** if you want automatic travel to Pietri.
+5. In game, run:
 
    ```text
-   /lua run ring
+   /lua run grimoire
    ```
 
 ## 🎮 Use
 
-1. Select the target ring version.
+1. Open **Rings** to select a target ring version and configure its augments.
 2. Choose a saved loadout, or select augments slot by slot and save a new one.
-3. Review the displayed target ring and augments, then click **Swap Ring**.
+3. Review the target ring and augments, then click **Swap Ring**.
 4. Watch the status line for navigation, hand-in, and installation progress.
+5. Open **Might & Dungeons** to estimate Might and browse instance suggestions.
+6. Use **Progression** for the checklist and guide, **Pearls** for pearl status, and **Currency** for token balances.
 
 Keep your cursor clear before starting. The script validates the selected augments and stops when it detects a failed or unexpected operation; review the status message before trying again.
 
@@ -49,5 +61,5 @@ The calculator references [EQ Might progression](https://www.eqmight.com/progres
 
 ## 📦 Files
 
-- `ring.lua` — the MacroQuest script
+- `grimoire.lua` — the MacroQuest script
 - `README.md` — features, setup, and usage
