@@ -115,6 +115,66 @@ local InstanceCategories = {
     },
 }
 
+-- Access flags: zone/key prerequisites gathered from community notes.
+local AccessFlags = {
+    {
+        id='pop',
+        name='Planes of Power Flags',
+        intro='Required for the Planes of Power and Fabled raid content. Plane of Fire, Halls of Honor B and Plane of Time must be flagged on every character even if you buy the Time key pieces. Tip: paste your /seer text into alkabor.com/flags.html to see where you stand.',
+        steps={
+            {id='pop_fire',name='Plane of Fire access (Rallos Zek flag)',note='Needed for the T12 raid instance. PoTactics (Drunder): kill Decorin Berik and Decorin Grunhork, kill fake Tallon and Vallon, kill fake Rallos, then jump into the pit and kill Rallos Zek.'},
+            {id='pop_solro',name='Tower of Solusek Ro (Solusek Ro flag)',note='Do all the mini flags in each wing before you can click up. After getting both hails, zone in from Plane of Tranquility to finish the flag.'},
+            {id='pop_water',name='Plane of Water access',note='Needed for the ranger epic. Requires Saryrn (Screaming Sphere, 1 Legendary token from Adrienne) OR Terris Thule (Nightmare hedge maze). Just the Saryrn flag is needed, not Keeper of Sorrows. Also requires Halls of Honor A Trials and the Mith Marr flag from Halls of Honor B.'},
+            {id='pop_hoha',name='Halls of Honor A Trials',note='Also required for the T11 Fabled Temple of Marr instance.'},
+            {id='pop_hohb',name='Halls of Honor B (Mith Marr flag)',note='Required on every character; also a T12 Fabled raid zone.'},
+            {id='pop_air',name='Plane of Air access',note='Kill Agnarr (needs Enchanted Ring of Torden, 1 Legendary token from Adrienne) or Aerin Dar (needs Crystalline Globe, 1 Legendary token). Say "Plane of Air" to Sarhya in PoTranquility for a Pouch of Swirling Winds. Buy Mystical Essence of Wind, Smoke, Mist and Dust (1 Legendary token each, Adrienne) and combine them in the pouch for the key. Raid members do not each need a key to click up to Xegony.'},
+            {id='pop_earth_a',name='Plane of Earth A access',note='Just zone in from Plane of Tranquility to flag.'},
+            {id='pop_earth_b',name='Plane of Earth B access (Mystical Arbiter flag)',note='Complete the special instance from the NPC near the Eartha zone-in.'},
+            {id='pop_time',name='Plane of Time access',note='Buy an Odylic Vial from Adrienne (2 Legendary tokens, tradeable). Combine a Mound of Living Stone, Globe of Dancing Flame, Sphere of Coalesced Water and Amorphous Cloud of Air in it for the Quintessence of Elements (drop from the elemental plane bosses or 2 Legendary tokens each). Hail Fran in PoKnowledge and say "Planes of Power Backflags". In PoInnovation say yes to Chronographer Muon and click the machine behind the gnome. The backflags also cover the Innovation door.'},
+        },
+    },
+    {
+        id='god',
+        name='Gates of Discord Flags',
+        intro='Chain leading to Kod\'Taz, Qvic, Txevu and Tacvi. The KT zone-in the first time must be through the stone next to Madronoa in Natimbi.',
+        steps={
+            {id='god_rondo',name='Ferubi: Smith Rondo event unlocks Kod\'Taz',note='Four Pxet minis drop the quest items: Broken Sword Blade (Elite Blademaster), Jagged Spear Tip (Elite Spearmaster), Chipped Hammer Head (Elite Hammermaster), Tarnished Knuckles (Elite Brawler). Turn in, clear the event and hail to unlock KT. An instance is also available from Chuck in Freeport.'},
+            {id='god_yxxta',name='Yxxta instance piece (Chuck)',note='Final boss scales with how many characters aggro; attack with 6 for the easiest fight. The piece can be bought with Legendary tokens.'},
+            {id='god_uqua',name='Uqua instance piece',note='Accessed through the open-world Yxxta; cheaper to buy than the Yxxta piece.'},
+            {id='god_tublik',name='Kod\'Taz: Lucifer to Tublik, hand in the sliver',note='Talk to Lucifer in KT and port to Tublik; hand him the sliver to open the barrier.'},
+            {id='god_qvic',name='Zone from KT into Qvic',note='Finishes the Qvic flag. Afterwards Madronoa in Natimbi ports you straight to Qvic (Txevu side).'},
+            {id='god_intukta',name='Qvic caves down to Intukta, hail for the flag',note='The flag lets you pick up the Intukta instance from Chuck.'},
+            {id='god_piece3',name='Intukta instance: third Txevu key piece',note='You can illusion through the doors for the easiest run.'},
+            {id='god_cipher',name='Brevik (Abysmal Sea): Cipher of Texvu',note='Turn in the three pieces, then manually zone into Txevu from Qvic to finish flagging.'},
+            {id='god_txevu',name='Txevu keys (champion event, high priest)',note='The champion event key ports your group from Chuck to Txevu; the high priest key picks up the instance. Skip the High Priest if short on time.'},
+            {id='god_tacvi',name='Tacvi access',note='The Txevu final boss drops the Tacvi key. Two Tacvi instances exist; take the guy\'s instance first, because the girl\'s instance locks you out of both.'},
+        },
+    },
+    {
+        id='warden',
+        name='Warden Ring Quest',
+        intro='Prerequisite: Duo progression flags for T4-T6 or T5-T7.',
+        steps={
+            {id='war_start',name='Silent Note and Uriel\'s diary',note='Find Tsuagaido Tanaka, say "other tours", then "Tenjou Kanko". Take the Silent Note from Silent Eyes to Uriel for Uriel\'s diary.'},
+            {id='war_items',name='Branded Cider and Fiery Blood',note='Cider: Froglok chef/bartender (Sebilis), or Blacksail cook/captain (Buried Sea). Blood: draconic spirit embers in Arcstone.'},
+            {id='war_lucia',name='Lucia in Broodlands: stamp the diary',note='Say Thundercrest Isles to Trixie in PoK, click the teleporter to Broodlands, and hand Lucia the cider, blood and diary.'},
+            {id='war_rank1',name='Root of Ro solo instance: Rank 1 Warden ring',note='Loot the quest piece from the boss and turn it in with the stamped diary.'},
+            {id='war_rank2_items',name='Sporali Crown and Freezing Royal Blood',note='Sporali Caverns duo instance (Easy+ or higher; easier with 2 Rank 0 rings) from Rene. Blood from the princes in the RSS King fight or Queen Tarmax in the Tier 6 AoW instance.'},
+            {id='war_rank2',name='Rank 2 Warden ring flag',note='Wear the Rank 1 ring first and hand both items to Silent Eyes. You can then hand rings back to cycle options. Silent Eyes also sells finger augments for Wolf Tokens (save 5 per character).'},
+        },
+    },
+    {
+        id='stillmoon',
+        name='Stillmoon Temple Rewards',
+        intro='Statue, idol and Cinderella quest items. Hand them to Pam or Aisha the Collector; reward quests can be cycled.',
+        steps={
+            {id='sm_symbol',name='Mythical Golden Ancestors Symbol',note='Steel statue (Valrakor), Brass (Animated Granite Guardian), Bismuth (Celeste the Silent Paw), Iridium (Volaris the Sharp). All 100% drops, tradeable via Pam for 1 Legendary token each.'},
+            {id='sm_idol',name='Mythical Idol of the Stillmoon Conqueror',note='Idols of a Titan, Nocturna, Thornheart and Drakes (Villy the Golden), 25% drops, tradeable via Pam for 1 Pam token each.'},
+            {id='sm_shoes',name='Cinderella\'s Shoes',note='Enchanted Frog (Hartini), Fluffy Unicorn (Thunderhoof), Cute Kitten (Solstice); 100% drops, tradeable via Pam. Hand the shoes in at the zone-in quest giver; the NPC prevents duplicate rewards if you cycle correctly. Avoid aggroing the Tigger Puppy before killing Solstice.'},
+        },
+    },
+}
+
 local ProgressNPCs = {
     solo={name='Lady Maria Luisa',categoryIndex=1},
     group={name='Sir Daniel',categoryIndex=2},
@@ -185,6 +245,31 @@ local GuideSections = {
             'Use the Rings tab to swap rank and augments through Pietri.',
         },
     },
+    {
+        id='pearls',
+        label='Pearl Farming Tips',
+        lines={
+            'Golden: Drake (Stillmoon drakes), Giant (Ar\'yer, Agnarr, Stillmoon statues), Wildcat (Stillmoon cats), Element (Rumblecrush / Eartha Fabled boss).',
+            'Blue: Colossus (Kael UF, T12 Stillmoon statue), Combatant (Ninja/Assassin in Sebilis), Dragon (UF Sev in EJ, WW dragons), Aristocrat (Emperor in Sebilis).',
+            'Silver: Dominance (Saryrn, Timeless Tolapumj chest), Fire (Solusek Ro), Growth (Balreth in Solteris, Eartha Fabled boss), Rage (Rallos Zek).',
+            'Purple: Knight (Mith Marr bosses), Shade (Chambers shade bosses), Treasure Chest (hard/intense bosses), Vampire (Chambers bosses).',
+            'Green: Fungus (Timeless Myconid Spore Empress, Sebilis), Gargoyle (Solteris), Reptile (UF bosses in The Grey, Entharr in Crystallos, Pixtt Kretv Krakxt in Tacvi), Tree (UF Rumbleroot, Sunken Library).',
+            'Black: Goblin (Golbi in Intense+ Quarries), Golem (Sebilite Guardian/Protector), Vortex (Count Drakvish, Intense Chambers), Insect (Gangrenous Scarab).',
+            'Rose: Forsaken Duelist (Skaramatra, Lair of the Risen), Grand Dame (Mistress Mistrella), Phantom Hunter (Nki in Qvic), Eternal Warlord (Ragnarok in Toskirakk).',
+            'Moonlit: Singularity, Mightforge, Primewyrm, Warshaper. Many more droppers have been added since; check allaclone for each pearl before farming.',
+        },
+    },
+    {
+        id='petgear',
+        label='Pet Gear',
+        lines={
+            'Armor: Ancestral/Ancient/regular Girdle of the High Summoner (Mage, level 69); Summon Plate of the Elements (Mage spell, level 70).',
+            'Mask: Summon Muzzle of Mowcha (level 70), Miranda\'s Mask (45), Mask of Mardu (51), Muzzle of Mardu (56).',
+            'Weapons: Artifact of Toxic Edge and Toxic Edge Earrings (65), Artifact of Baat (Mage, 68).',
+            'Gloves: Legendary/regular Gloves of Strongboom and Gloves of Ixiblat (level 51).',
+            'Belt: Legendary/regular Goblin Mask of Stability (level 63).',
+        },
+    },
 }
 
 local State = {
@@ -224,6 +309,7 @@ local State = {
     logTiers={},
     logMaxTier={},
     progressNav='overview',
+    accessDone={},
     logChanges=0,
     logOffset=0,
     logCarry='',
@@ -363,6 +449,14 @@ local function LoadProgress()
         end
     end
 
+    file:seek('set',0)
+    for line in file:lines() do
+        local accessID = line:match('^F|([%w_]+)$')
+        if accessID then
+            State.accessDone[accessID] = true
+        end
+    end
+
     file:close()
 end
 
@@ -405,6 +499,14 @@ local function SaveProgress()
         if not ok then
             file:close()
             return false,'Could not write saved side flags: '..tostring(writeError)
+        end
+    end
+
+    for _,group in ipairs(AccessFlags) do
+        for _,step in ipairs(group.steps) do
+            if State.accessDone[step.id] then
+                file:write('F|'..step.id..'\n')
+            end
         end
     end
 
@@ -2432,6 +2534,25 @@ local function ScanAllCharacterProgress()
     return rows
 end
 
+local function AccessStats(group)
+    local done = 0
+    for _,step in ipairs(group.steps) do
+        if State.accessDone[step.id] then
+            done = done + 1
+        end
+    end
+    return done,#group.steps
+end
+
+-- "category:tier" -> access flag groups that gate that tier's content.
+local TierAccessFlags = {
+    ['1:7']={'pop'},
+    ['1:9']={'warden'},
+    ['1:10']={'stillmoon'},
+    ['2:7']={'pop'},
+    ['2:8']={'god'},
+}
+
 local function TierStats(categoryIndex,tierIndex)
     local tier = InstanceCategories[categoryIndex].tiers[tierIndex]
     local total = CountTargets(tier)
@@ -2523,6 +2644,23 @@ local function DrawTierDetail(categoryIndex,tierIndex)
     end
 
     ImGui.Spacing()
+    local related = TierAccessFlags[categoryIndex..':'..tier.tier]
+    if related then
+        DrawHeading('Related Access Flags')
+        for _,groupID in ipairs(related) do
+            for _,group in ipairs(AccessFlags) do
+                if group.id == groupID then
+                    local groupDone,groupTotal = AccessStats(group)
+                    ImGui.BulletText(string.format('%s (%d/%d)',group.name,groupDone,groupTotal))
+                    ImGui.SameLine()
+                    if ImGui.SmallButton('Open##rel_'..groupID) then
+                        State.progressNav = 'a:'..groupID
+                    end
+                end
+            end
+        end
+        ImGui.Spacing()
+    end
     DrawHeading('Targets')
     for targetIndex,target in ipairs(targets) do
         local key = ProgressKey(categoryIndex,tierIndex,targetIndex)
@@ -2539,8 +2677,8 @@ local function DrawTierDetail(categoryIndex,tierIndex)
 end
 
 local function DrawSideFlagsUI()
-    DrawHeading('Side Flags')
-    ImGui.TextDisabled('Track keys, flags and goals that are not part of the tier checklist.')
+    DrawHeading('Custom Flags')
+    ImGui.TextDisabled('Your own extra goals that are not part of the built-in access flags.')
     local completedFlags = 0
     for _,flag in ipairs(State.sideFlags) do
         if flag.done then
@@ -2600,6 +2738,44 @@ local function DrawSideFlagsUI()
     end
 end
 
+local function DrawAccessUI(group)
+    local done,total = AccessStats(group)
+    DrawHeading(group.name)
+    ImGui.TextWrapped(group.intro)
+    ImGui.TextColored(ProgressColors.gold[1],ProgressColors.gold[2],ProgressColors.gold[3],1,
+        string.format('Progress: %d/%d steps complete',done,total))
+    ImGui.ProgressBar(total > 0 and done / total or 0,-1,0,string.format('%d / %d',done,total))
+    if ImGui.SmallButton('Mark all##access_all') then
+        for _,step in ipairs(group.steps) do
+            State.accessDone[step.id] = true
+        end
+        SaveProgressChanges()
+    end
+    ImGui.SameLine()
+    if ImGui.SmallButton('Clear##access_clear') then
+        for _,step in ipairs(group.steps) do
+            State.accessDone[step.id] = nil
+        end
+        SaveProgressChanges()
+    end
+
+    ImGui.Spacing()
+    DrawHeading('Steps')
+    for _,step in ipairs(group.steps) do
+        local updated,changed = ImGui.Checkbox(step.name..'##'..step.id,State.accessDone[step.id] == true)
+        if changed then
+            State.accessDone[step.id] = updated and true or nil
+            SaveProgressChanges()
+        end
+        ImGui.Indent()
+        ImGui.PushStyleColor(ImGuiCol.Text,ProgressColors.grey[1],ProgressColors.grey[2],ProgressColors.grey[3],1)
+        ImGui.TextWrapped(step.note)
+        ImGui.PopStyleColor()
+        ImGui.Unindent()
+        ImGui.Spacing()
+    end
+end
+
 local function DrawOverviewUI()
     DrawHeading('Progress Overview')
     for categoryIndex=1,2 do
@@ -2633,6 +2809,17 @@ local function DrawOverviewUI()
         else
             ImGui.TextColored(ProgressColors.green[1],ProgressColors.green[2],ProgressColors.green[3],1,
                 InstanceCategories[categoryIndex].name..': everything complete!')
+        end
+    end
+
+    ImGui.Spacing()
+    DrawHeading('Access Flags')
+    for index,group in ipairs(AccessFlags) do
+        local done,total = AccessStats(group)
+        ImGui.Text(string.format('%s: %d / %d',group.name,done,total))
+        ImGui.SameLine()
+        if ImGui.SmallButton(string.format('Open##access_%d',index)) then
+            State.progressNav = 'a:'..group.id
         end
     end
 
@@ -2695,8 +2882,24 @@ local function DrawProgressNavUI()
         end
     end
     ImGui.Spacing()
+    ImGui.TextDisabled('-- ACCESS FLAGS --')
+    for _,group in ipairs(AccessFlags) do
+        local done,total = AccessStats(group)
+        local complete = done == total
+        if complete then
+            ImGui.PushStyleColor(ImGuiCol.Text,0.45,0.85,0.45,1)
+        end
+        NavItem(
+            string.format('%s %s (%d/%d)',complete and '[x]' or '[ ]',group.name,done,total),
+            'a:'..group.id
+        )
+        if complete then
+            ImGui.PopStyleColor()
+        end
+    end
+    ImGui.Spacing()
     ImGui.TextDisabled('-- TOOLS --')
-    NavItem('Side Flags','flags')
+    NavItem('Custom Flags','flags')
     NavItem('All Characters','chars')
     ImGui.Spacing()
     ImGui.TextDisabled('-- GUIDE --')
@@ -2770,6 +2973,18 @@ local function DrawProgressionUI()
         end
     elseif nav == 'flags' then
         DrawSideFlagsUI()
+    elseif nav:sub(1,2) == 'a:' then
+        local found
+        for _,group in ipairs(AccessFlags) do
+            if group.id == nav:sub(3) then
+                found = group
+            end
+        end
+        if found then
+            DrawAccessUI(found)
+        else
+            DrawOverviewUI()
+        end
     elseif nav == 'chars' then
         DrawAllCharactersUI()
     elseif nav:sub(1,2) == 'g:' then
