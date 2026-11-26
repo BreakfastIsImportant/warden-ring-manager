@@ -2560,11 +2560,13 @@ local function ProcessProgressLogLine(line,name)
     local mob = line:match('%] '..name..' has defeated (.-) for the first time%.')
         or line:match('%] (.-) %(%a+%) was defeated by '..name..'%.')
     if mob then
+        State.logMatched = (State.logMatched or 0) + 1
         return TrackKilledTarget(mob),nil
     end
 
     local tier = line:match('%] '..name..' has completed (.-) progression!')
     if tier then
+        State.logMatched = (State.logMatched or 0) + 1
         State.logTiers[tier] = true
         local tierNumber = tonumber(tier:match('%(Tier (%d+)%)'))
         if tierNumber then
@@ -2614,6 +2616,7 @@ local function StartProgressLog()
     ResetProgressLog()
     State.logTiers = {}
     State.logMaxTier = {}
+    State.logMatched = 0
     State.logChanges = 0
     local path = GetEQLogPath()
     if not path then
@@ -2672,7 +2675,12 @@ local function PumpProgressLog()
 
     if chunks < 4 and State.logImporting then
         State.logImporting = false
-        State.logStatus = 'Log history imported; watching for new announcements.'
+        State.logStatus = string.format(
+            'Read the whole log (%.1f MB); found %d announcement(s) naming %s.',
+            State.logOffset / 1048576,
+            State.logMatched or 0,
+            GetLogCharacterName()
+        )
     end
 
     changes = changes + ApplyTierCompletion()
