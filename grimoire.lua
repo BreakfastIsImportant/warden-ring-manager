@@ -4065,6 +4065,214 @@ local function DrawTravelHubs()
     end
 end
 
+-- Spells browser: data lives in eqm-data/spells.lua (tools/build_spells.py, from eqmight.com's Spells & Auras page).
+local SpellUI = {
+    classIndex=nil,
+    loadedClass=nil,
+    data=nil,
+    rows={},
+    error='',
+    view={},
+    viewKey='',
+    known={},
+    search='',
+    sortIndex=1,
+    descending=false,
+    sourceIndex=1,
+    typeIndex=1,
+    minLevel=1,
+    maxLevel=72,
+    hideKnown=false,
+}
+local SpellClasses = {'Bard','Beastlord','Berserker','Cleric','Druid','Enchanter','Magician','Monk','Necromancer',
+    'Paladin','Ranger','Rogue','Shadow Knight','Shaman','Warrior','Wizard'}
+local SpellSorts = {'Level','Name','Source'}
+local SpellSources = {'All','Has a source','Sold','Dropped','Quest','No source listed'}
+local SpellTypes = {'All','Spells / disciplines','Auras','Items'}
+local SpellTypeKinds = {nil,'Spell','Aura','Item'}
+
+local function SpellSourceText(row)
+    return table.concat(row.s,' ')
+end
+
+local function LoadSpellClass(className)
+    SpellUI.loadedClass = className
+    SpellUI.viewKey = ''
+    SpellUI.error = ''
+    if not SpellUI.data then
+        local ok,data = pcall(require,'eqm-data.spells')
+        if ok and type(data) == 'table' then
+            SpellUI.data = data
+        else
+            SpellUI.data = {entries={},notes={}}
+            SpellUI.error = 'Spell data not found. Make sure eqm-data\\spells.lua is next to grimoire.lua.'
+        end
+    end
+    SpellUI.rows = {}
+    SpellUI.known = {}
+    for _,row in ipairs(SpellUI.data.entries) do
+        if row.c == className or row.c == 'All classes' then
+            table.insert(SpellUI.rows,row)
+            if row.k == 'Spell' then
+                local book = mq.TLO.Me.Book(row.n)
+                local disc = mq.TLO.Me.CombatAbility(row.n)
+                if (book and (tonumber(book()) or 0) > 0) or (disc and (tonumber(disc()) or 0) > 0) then
+                    SpellUI.known[row] = true
+                end
+            end
+        end
+    end
+end
+
+local function RebuildSpellView()
+    local needle = SpellUI.search:lower()
+    local kind = SpellTypeKinds[SpellUI.typeIndex]
+    local view = {}
+    for _,row in ipairs(SpellUI.rows) do
+        local source = SpellSourceText(row):lower()
+        local sourceOK = SpellUI.sourceIndex == 1
+            or SpellUI.sourceIndex == 2 and source ~= ''
+            or SpellUI.sourceIndex == 3 and source:find('sold',1,true)
+            or SpellUI.sourceIndex == 4 and source:find('dropped',1,true)
+            or SpellUI.sourceIndex == 5 and source:find('quest',1,true)
+            or SpellUI.sourceIndex == 6 and source == ''
+        if sourceOK
+        and (not kind or row.k == kind)
+        and row.l >= SpellUI.minLevel and row.l <= SpellUI.maxLevel
+        and not (SpellUI.hideKnown and SpellUI.known[row])
+        and (needle == '' or row.n:lower():find(needle,1,true) or source:find(needle,1,true)
+            or table.concat(row.e,' '):lower():find(needle,1,true)) then
+            table.insert(view,row)
+        end
+    end
+    local sorters = {
+        function(a,b) if a.l ~= b.l then return a.l < b.l end return a.n < b.n end,
+        function(a,b) if a.n ~= b.n then return a.n < b.n end return a.l < b.l end,
+        function(a,b)
+            local sa,sb = SpellSourceText(a),SpellSourceText(b)
+            if sa ~= sb then return sa < sb end
+            return a.n < b.n
+        end,
+    }
+    local sorter = sorters[SpellUI.sortIndex]
+    table.sort(view,SpellUI.descending and function(a,b) return sorter(b,a) end or sorter)
+    SpellUI.view = view
+end
+
+local function DrawSpellCombo(label,items,current)
+    local picked
+    if ImGui.BeginCombo(label,items[current]) then
+        for index,name in ipairs(items) do
+            if ImGui.Selectable(name..label..index,index == current) then
+                picked = index
+            end
+        end
+        ImGui.EndCombo()
+    end
+    return picked
+end
+
+local function DrawSpellsUI()
+    if not SpellUI.classIndex then
+        local myClass = (mq.TLO.Me.Class() or ''):lower()
+        SpellUI.classIndex = 1
+        for index,name in ipairs(SpellClasses) do
+            if name:lower() == myClass then
+                SpellUI.classIndex = index
+            end
+        end
+        SpellUI.maxLevel = math.max(tonumber(mq.TLO.Me.Level()) or 72,1)
+    end
+    if SpellUI.loadedClass ~= SpellClasses[SpellUI.classIndex] then
+        LoadSpellClass(SpellClasses[SpellUI.classIndex])
+    end
+
+    local dirty = false
+    ImGui.PushItemWidth(140)
+    local picked = DrawSpellCombo('Class##sp_class',SpellClasses,SpellUI.classIndex)
+    if picked then SpellUI.classIndex = picked end
+    ImGui.SameLine()
+    picked = DrawSpellCombo('Sort by##sp_sort',SpellSorts,SpellUI.sortIndex)
+    if picked then SpellUI.sortIndex = picked dirty = true end
+    ImGui.SameLine()
+    picked = DrawSpellCombo('Source##sp_source',SpellSources,SpellUI.sourceIndex)
+    if picked then SpellUI.sourceIndex = picked dirty = true end
+    ImGui.SameLine()
+    picked = DrawSpellCombo('Type##sp_type',SpellTypes,SpellUI.typeIndex)
+    if picked then SpellUI.typeIndex = picked dirty = true end
+    ImGui.PopItemWidth()
+    ImGui.SameLine()
+    local value,changed = ImGui.Checkbox('Descending##sp_desc',SpellUI.descending)
+    if changed then SpellUI.descending = value dirty = true end
+
+    ImGui.PushItemWidth(180)
+    value,changed = ImGui.InputText('Search##sp_search',SpellUI.search,60)
+    if changed then SpellUI.search = value dirty = true end
+    ImGui.PopItemWidth()
+    ImGui.SameLine()
+    ImGui.PushItemWidth(90)
+    local minLevel = ImGui.InputInt('Min lvl##sp_min',SpellUI.minLevel)
+    ImGui.SameLine()
+    local maxLevel = ImGui.InputInt('Max lvl##sp_max',SpellUI.maxLevel)
+    ImGui.PopItemWidth()
+    if minLevel ~= SpellUI.minLevel or maxLevel ~= SpellUI.maxLevel then
+        SpellUI.minLevel,SpellUI.maxLevel = minLevel,maxLevel
+        dirty = true
+    end
+    ImGui.SameLine()
+    value,changed = ImGui.Checkbox('Hide known##sp_known',SpellUI.hideKnown)
+    if changed then SpellUI.hideKnown = value dirty = true end
+    ImGui.SameLine()
+    if ImGui.SmallButton('Refresh known##sp_refresh') then
+        LoadSpellClass(SpellClasses[SpellUI.classIndex])
+        dirty = true
+    end
+
+    if dirty or SpellUI.viewKey == '' then
+        RebuildSpellView()
+        SpellUI.viewKey = 'built'
+    end
+    if SpellUI.error ~= '' then
+        ImGui.TextColored(1,0.5,0.4,1,SpellUI.error)
+        return
+    end
+    ImGui.TextDisabled(string.format('%d of %d entries. Green [x] = already known. Only EQ Might custom spells, discs, auras and items (eqmight.com); regular spells are not listed.',
+        #SpellUI.view,#SpellUI.rows))
+
+    if ImGui.BeginTable('##spell_table',4,
+        ImGuiTableFlags.Borders + ImGuiTableFlags.RowBg + ImGuiTableFlags.ScrollY,0,0) then
+        ImGui.TableSetupColumn('Lvl',ImGuiTableColumnFlags.WidthFixed,34)
+        ImGui.TableSetupColumn('Name',ImGuiTableColumnFlags.WidthFixed,220)
+        ImGui.TableSetupColumn('Effects',ImGuiTableColumnFlags.WidthStretch)
+        ImGui.TableSetupColumn('How to get',ImGuiTableColumnFlags.WidthStretch)
+        ImGui.TableHeadersRow()
+        for _,row in ipairs(SpellUI.view) do
+            ImGui.TableNextRow()
+            ImGui.TableSetColumnIndex(0)
+            ImGui.Text(row.l > 0 and tostring(row.l) or '-')
+            ImGui.TableSetColumnIndex(1)
+            local label = (row.k == 'Aura' and '(Aura) ' or row.k == 'Item' and '(Item) ' or '')..row.n
+            if SpellUI.known[row] then
+                ImGui.TextColored(0.45,0.85,0.45,1,'[x] '..label)
+            else
+                ImGui.TextWrapped(label)
+            end
+            if row.r ~= '' then
+                ImGui.TextDisabled(row.r)
+            end
+            ImGui.TableSetColumnIndex(2)
+            ImGui.TextWrapped(table.concat(row.e,'; '))
+            ImGui.TableSetColumnIndex(3)
+            if #row.s > 0 then
+                ImGui.TextWrapped(SpellSourceText(row))
+            else
+                ImGui.TextDisabled('Not listed on the site')
+            end
+        end
+        ImGui.EndTable()
+    end
+end
+
 local function DrawToolsUI()
     if ImGui.CollapsingHeader('Travel methods (AA / item clicks)##tools_travel',ImGuiTreeNodeFlags.DefaultOpen) then
         if not State.travelSetupDone then
@@ -4783,6 +4991,11 @@ local function DrawUI()
 
             if ImGui.BeginTabItem('Currency') then
                 DrawAltCurrencyUI()
+                ImGui.EndTabItem()
+            end
+
+            if ImGui.BeginTabItem('Spells') then
+                DrawSpellsUI()
                 ImGui.EndTabItem()
             end
 

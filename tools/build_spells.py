@@ -1,0 +1,121 @@
+"""Builds eqm-data/spells.lua from https://www.eqmight.com/eq-might-specifics/spells-auras.
+
+Usage: python tools/build_spells.py [output_file]
+The page lists EQ Might's custom spells, songs, disciplines, auras and clicky items per class.
+"""
+import html
+import os
+import re
+import sys
+import urllib.request
+
+URL = 'https://www.eqmight.com/eq-might-specifics/spells-auras'
+OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(__file__), '..', 'eqm-data', 'spells.lua')
+CLASSES = ['Bard', 'Beastlord', 'Berserker', 'Cleric', 'Druid', 'Enchanter', 'Magician', 'Monk', 'Necromancer',
+           'Paladin', 'Ranger', 'Rogue', 'Shaman', 'Shadow Knight', 'Warrior', 'Wizard']
+ABBR = {'WAR': 'Warrior', 'PAL': 'Paladin', 'RNG': 'Ranger', 'SHD': 'Shadow Knight', 'MNK': 'Monk', 'BRD': 'Bard',
+        'ROG': 'Rogue', 'BST': 'Beastlord', 'BER': 'Berserker', 'CLR': 'Cleric', 'ENC': 'Enchanter',
+        'MAG': 'Magician', 'NEC': 'Necromancer', 'SHM': 'Shaman', 'DRU': 'Druid', 'WIZ': 'Wizard'}
+SOURCE = re.compile(r"^(Sold|Dropped|Acquired|Obtained|Purchased|Looted|Reward|Quest)|Cloe's Quest|[Pp]urchased from", re.I)
+HEADER = re.compile(r'^([A-Z][^()]*?) \((\d+)\)$')
+EFFECT_START = re.compile(r'^(Increase|Decrease|Absorb|Add|Effect)')
+SECTION = re.compile(r'^(%s|Various Classes) (Auras|Custom [A-Za-z ]+|Items|Poison Items|Spells with custom Ranks|AoE songs)$'
+                     % '|'.join(CLASSES))
+CLASS_LINE = re.compile(r'^[A-Z]{3}(?: \(\d+\))?(?:, [A-Z]{3}(?: \(\d+\))?)*$')
+RANKS = re.compile(r'\b[Rr][Kk]\.? [IVX]+(?: - [IVX]+)?$')
+
+
+def page_lines():
+    req = urllib.request.Request(URL, headers={'User-Agent': 'Mozilla/5.0'})
+    text = urllib.request.urlopen(req, timeout=60).read().decode('utf8', 'replace')
+    text = re.sub(r'(?s)<script.*?</script>|<style.*?</style>', '', text)
+    text = re.sub(r'</(p|div|li|h\d|tr|td|table)>|<br\s*/?>', '\n', text)
+    text = html.unescape(re.sub(r'<[^>]+>', '', text)).replace('\xa0', ' ')
+    return [re.sub(r'\s+', ' ', line).strip() for line in text.split('\n') if line.strip()]
+
+
+def new_entry(name, level, kind, owner):
+    return {'n': name, 'l': level, 'k': kind, 'o': owner, 'e': [], 's': [], 'r': '', 'cl': []}
+
+
+def parse(lines):
+    entries, notes = [], []
+    owner, kind, skip, current = None, None, True, None
+    for index, line in enumerate(lines):
+        if line.startswith('© EQ Might'):
+            break
+        section = SECTION.match(line)
+        if section:
+            owner, name = section.group(1), section.group(2)
+            skip = name in ('Spells with custom Ranks', 'AoE songs')
+            kind = 'Aura' if name == 'Auras' else 'Item' if 'Items' in name else 'Spell'
+            current = None
+            continue
+        if skip or owner is None:
+            continue
+        if line in CLASSES or line == 'Various Classes' or line.startswith('See all'):
+            current = None
+            continue
+        header = HEADER.match(line)
+        following = lines[index + 1] if index + 1 < len(lines) else ''
+        if owner == 'Various Classes' and CLASS_LINE.match(following) and not CLASS_LINE.match(line):
+            current = new_entry(header.group(1) if header else line, int(header.group(2)) if header else 0, kind, owner)
+            entries.append(current)
+            continue
+        if header and not EFFECT_START.match(line):
+            current = new_entry(header.group(1), int(header.group(2)), kind, owner)
+            entries.append(current)
+            continue
+        if (owner == 'Various Classes' and current is None and kind != 'Item'
+                and not line.endswith('.') and len(line) < 60 and not CLASS_LINE.match(line)):
+            current = new_entry(line, 0, kind, owner)
+            entries.append(current)
+            continue
+        if current is None:
+            if line.endswith('.') and owner == 'Various Classes':
+                notes.append(line)
+            continue
+        ranks = RANKS.search(line)
+        if ranks and line.lower().startswith(current['n'].lower()[:10]):
+            current['r'] = ranks.group(0)
+        elif CLASS_LINE.match(line):
+            current['cl'] = [(ABBR[a], int(lv) if lv else None)
+                             for a, lv in re.findall(r'([A-Z]{3})(?: \((\d+)\))?', line) if a in ABBR]
+        elif SOURCE.search(line):
+            current['s'].append(line)
+        else:
+            current['e'].append(line)
+    return entries, notes
+
+
+def lua_str(text):
+    return "'" + text.replace('\\', '\\\\').replace("'", "\\'") + "'"
+
+
+def expand(entries):
+    rows = []
+    for entry in entries:
+        targets = [(c, lv or entry['l']) for c, lv in entry['cl']] if entry['cl'] else [(entry['o'], entry['l'])]
+        for owner, level in targets:
+            rows.append(('All classes' if owner == 'Various Classes' else owner, level, entry))
+    return rows
+
+
+def main():
+    entries, notes = parse(page_lines())
+    rows = expand(entries)
+    out = ['-- Generated by tools/build_spells.py from ' + URL, 'return {', 'entries={']
+    for owner, level, entry in rows:
+        out.append('{c=%s,l=%d,n=%s,k=%s,r=%s,e={%s},s={%s}},' % (
+            lua_str(owner), level, lua_str(entry['n']), lua_str(entry['k']), lua_str(entry['r']),
+            ','.join(lua_str(x) for x in entry['e']), ','.join(lua_str(x) for x in entry['s'])))
+    out.append('},')
+    out.append('notes={%s},' % ','.join(lua_str(x) for x in notes))
+    out.append('}')
+    os.makedirs(os.path.dirname(os.path.abspath(OUT)), exist_ok=True)
+    with open(OUT, 'w', encoding='utf8') as handle:
+        handle.write('\n'.join(out) + '\n')
+    print(len(rows), 'rows,', len(notes), 'notes')
+
+
+main()
