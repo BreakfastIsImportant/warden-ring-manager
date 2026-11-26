@@ -222,6 +222,8 @@ local State = {
     progressPendingChanges=0,
     autoTrackProgressLogs=false,
     logTiers={},
+    logMaxTier={},
+    progressNav='overview',
     logChanges=0,
     logOffset=0,
     logCarry='',
@@ -2031,16 +2033,6 @@ local function DrawMightUI()
     ImGui.TextDisabled('Assumptions: ring Rank 1-4 grants Warden I-IV; party-composition reductions are excluded.')
 end
 
-local function ProgressMatchesFilter(isDone)
-    if State.progressFilter == 2 then
-        return not isDone
-    end
-    if State.progressFilter == 3 then
-        return isDone
-    end
-    return true
-end
-
 local function SaveProgressChanges()
     local saved,message = SaveProgress()
     State.progressStatus = message
@@ -2277,8 +2269,36 @@ local function ProcessProgressLogLine(line,name)
     local tier = line:match('%] '..name..' has completed (.-) progression!')
     if tier then
         State.logTiers[tier] = true
+        local tierNumber = tonumber(tier:match('%(Tier (%d+)%)'))
+        if tierNumber then
+            -- Announcements only say "Solo" for the solo/duo path.
+            local path = tier:find('Solo',1,true) and 1 or 2
+            State.logMaxTier[path] = math.max(State.logMaxTier[path] or 0,tierNumber)
+        end
     end
     return 0,tier
+end
+
+-- Finishing a tier implies every lower tier on that path is finished.
+local function ApplyTierCompletion()
+    local changes = 0
+    for categoryIndex=1,2 do
+        local maxTier = State.logMaxTier[categoryIndex]
+        if maxTier then
+            for tierIndex,tier in ipairs(InstanceCategories[categoryIndex].tiers) do
+                if tier.tier <= maxTier then
+                    for targetIndex=1,CountTargets(tier) do
+                        local key = ProgressKey(categoryIndex,tierIndex,targetIndex)
+                        if not State.progressDone[key] then
+                            State.progressDone[key] = true
+                            changes = changes + 1
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return changes
 end
 
 local function ResetProgressLog()
@@ -2296,6 +2316,7 @@ end
 local function StartProgressLog()
     ResetProgressLog()
     State.logTiers = {}
+    State.logMaxTier = {}
     State.logChanges = 0
     local path = GetEQLogPath()
     if not path then
@@ -2357,6 +2378,7 @@ local function PumpProgressLog()
         State.logStatus = 'Log history imported; watching for new announcements.'
     end
 
+    changes = changes + ApplyTierCompletion()
     if changes > 0 then
         State.logChanges = State.logChanges + changes
         State.progressPendingSave = true
@@ -2410,241 +2432,277 @@ local function ScanAllCharacterProgress()
     return rows
 end
 
-local function DrawMightProgressUI()
-    local totalTargets = 0
-    local doneTargets = 0
-
-    for categoryIndex,category in ipairs(InstanceCategories) do
-        for tierIndex,tier in ipairs(category.tiers) do
-            for targetIndex=1,CountTargets(tier) do
-                totalTargets = totalTargets + 1
-                local isDone = State.progressDone[ProgressKey(
-                    categoryIndex,
-                    tierIndex,
-                    targetIndex
-                )] == true
-                if isDone then
-                    doneTargets = doneTargets + 1
-                end
-            end
+local function TierStats(categoryIndex,tierIndex)
+    local tier = InstanceCategories[categoryIndex].tiers[tierIndex]
+    local total = CountTargets(tier)
+    local done = 0
+    for targetIndex=1,total do
+        if State.progressDone[ProgressKey(categoryIndex,tierIndex,targetIndex)] then
+            done = done + 1
         end
     end
+    return done,total
+end
 
-    ImGui.TextColored(0.35,0.82,1,1,'MIGHT TARGET CHECKLIST')
-    ImGui.TextDisabled('Manually track Solo / Duo, Group, and custom side-flag goals.')
-    if ImGui.CollapsingHeader(string.format(
-        'Recent NPC responses (%d)##progress_npc_responses',
-        #State.progressReports
-    )) then
-        if #State.progressReports == 0 then
-            ImGui.TextDisabled('No progress dialogue captured yet.')
-        else
-            if ImGui.SmallButton('Clear responses##progress_npc_responses') then
-                State.progressReports = {}
-            end
-            for index,report in ipairs(State.progressReports) do
-                ImGui.PushID('progress_report_'..index)
-                ImGui.TextDisabled(report.source..':')
-                ImGui.TextWrapped(report.text)
-                ImGui.PopID()
-            end
+local function CategoryStats(categoryIndex)
+    local done,total = 0,0
+    for tierIndex=1,#InstanceCategories[categoryIndex].tiers do
+        local tierDone,tierTotal = TierStats(categoryIndex,tierIndex)
+        done = done + tierDone
+        total = total + tierTotal
+    end
+    return done,total
+end
+
+local function OverallStats()
+    local done,total = 0,0
+    for categoryIndex=1,2 do
+        local categoryDone,categoryTotal = CategoryStats(categoryIndex)
+        done = done + categoryDone
+        total = total + categoryTotal
+    end
+    return done,total
+end
+
+local function FirstUnfinishedTier(categoryIndex)
+    for tierIndex,tier in ipairs(InstanceCategories[categoryIndex].tiers) do
+        local done,total = TierStats(categoryIndex,tierIndex)
+        if tier.might > 0 and done < total then
+            return tierIndex,tier
         end
     end
+    return nil
+end
 
-    ImGui.Text(string.format(
-        'Suggested targets complete: %d / %d',
-        doneTargets,
-        totalTargets
-    ))
-    ImGui.ProgressBar(
-        totalTargets > 0 and doneTargets / totalTargets or 0,
-        -1,
-        0,
-        string.format('%d%%',totalTargets > 0 and math.floor(doneTargets * 100 / totalTargets) or 0)
-    )
-    ImGui.TextDisabled('Only explicit target/status pairs from these NPC reports auto-sync; mark other results manually.')
+local ProgressColors = {
+    gold={0.92,0.70,0.25,1},
+    green={0.45,0.85,0.45,1},
+    grey={0.60,0.60,0.62,1},
+    cyan={0.55,0.85,1,1},
+    ember={1,0.55,0.15,1},
+}
 
-    State.progressFilter = DrawCombo(
-        'Show progression',
-        State.progressFilter,
-        {'All targets','Needs doing','Done'},
-        'progress_filter'
-    )
-
-    local visibleTargets = 0
-    for categoryIndex,category in ipairs(InstanceCategories) do
-        for tierIndex,tier in ipairs(category.tiers) do
-            for targetIndex=1,CountTargets(tier) do
-                local isDone = State.progressDone[ProgressKey(
-                    categoryIndex,
-                    tierIndex,
-                    targetIndex
-                )] == true
-                if ProgressMatchesFilter(isDone) then
-                    visibleTargets = visibleTargets + 1
-                end
-            end
-        end
-    end
-
-    if visibleTargets == 0 then
-        ImGui.TextDisabled('No instance targets match this filter.')
-    end
-
-    for categoryIndex,category in ipairs(InstanceCategories) do
-        local categoryDone = 0
-        local categoryTotal = 0
-        local categoryVisible = false
-        for tierIndex,tier in ipairs(category.tiers) do
-            for targetIndex=1,CountTargets(tier) do
-                categoryTotal = categoryTotal + 1
-                local isDone = State.progressDone[ProgressKey(
-                    categoryIndex,
-                    tierIndex,
-                    targetIndex
-                )] == true
-                if isDone then
-                    categoryDone = categoryDone + 1
-                end
-                if ProgressMatchesFilter(isDone) then
-                    categoryVisible = true
-                end
-            end
-        end
-
-        if categoryVisible and ImGui.CollapsingHeader(string.format(
-            '%s (%d/%d)',
-            category.name,
-            categoryDone,
-            categoryTotal
-        )) then
-            for tierIndex,tier in ipairs(category.tiers) do
-                local targets = GetInstanceTargets(tier)
-                local tierDone = 0
-                local tierVisible = 0
-                for targetIndex=1,#targets do
-                    local isDone = State.progressDone[ProgressKey(
-                        categoryIndex,
-                        tierIndex,
-                        targetIndex
-                    )] == true
-                    if isDone then
-                        tierDone = tierDone + 1
-                    end
-                    if ProgressMatchesFilter(isDone) then
-                        tierVisible = tierVisible + 1
-                    end
-                end
-
-                if tierVisible > 0 and ImGui.CollapsingHeader(string.format(
-                    '%s (%d/%d)##progress_tier_%d_%d',
-                    tier.name,
-                    tierDone,
-                    #targets,
-                    categoryIndex,
-                    tierIndex
-                )) then
-                    for targetIndex,target in ipairs(targets) do
-                        local key = ProgressKey(
-                            categoryIndex,
-                            tierIndex,
-                            targetIndex
-                        )
-                        local isDone = State.progressDone[key] == true
-                        if ProgressMatchesFilter(isDone) then
-                            local label = string.format(
-                                '%s##progress_target_%d_%d_%d',
-                                target,
-                                categoryIndex,
-                                tierIndex,
-                                targetIndex
-                            )
-                            local updatedDone,changed = ImGui.Checkbox(label,isDone)
-                            if changed then
-                                State.progressDone[key] = updatedDone and true or nil
-                                SaveProgressChanges()
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
-
+local function DrawHeading(text)
+    ImGui.TextColored(ProgressColors.gold[1],ProgressColors.gold[2],ProgressColors.gold[3],1,text)
     ImGui.Separator()
-    ImGui.TextColored(0.35,0.82,1,1,'SIDE FLAGS')
-    ImGui.TextDisabled('Add server-specific side flags or goals here; check them off when complete.')
+end
+
+local function SetTierDone(categoryIndex,tierIndex,done)
+    local tier = InstanceCategories[categoryIndex].tiers[tierIndex]
+    for targetIndex=1,CountTargets(tier) do
+        State.progressDone[ProgressKey(categoryIndex,tierIndex,targetIndex)] = done and true or nil
+    end
+    SaveProgressChanges()
+end
+
+local function DrawTierDetail(categoryIndex,tierIndex)
+    local category = InstanceCategories[categoryIndex]
+    local tier = category.tiers[tierIndex]
+    local targets = GetInstanceTargets(tier)
+    local done,total = TierStats(categoryIndex,tierIndex)
+
+    DrawHeading(string.format('%s - %s',category.name,tier.name))
+    ImGui.Text(string.format('Might reward: %d',tier.might))
+    if tier.raidMight then
+        ImGui.SameLine()
+        ImGui.TextDisabled(string.format('(raid: %d)',tier.raidMight))
+    end
+    local difficulty = tier.auto == true and 'Auto-scaling difficulty'
+        or tier.auto == 'selected' and 'Selectable difficulty'
+        or 'Fixed difficulty'
+    ImGui.TextDisabled(difficulty)
+    ImGui.TextColored(ProgressColors.gold[1],ProgressColors.gold[2],ProgressColors.gold[3],1,
+        string.format('Progress: %d/%d targets complete',done,total))
+    ImGui.ProgressBar(total > 0 and done / total or 0,-1,0,string.format('%d%%',total > 0 and math.floor(done * 100 / total) or 0))
+    if ImGui.SmallButton('Mark all done##tier_all') then
+        SetTierDone(categoryIndex,tierIndex,true)
+    end
+    ImGui.SameLine()
+    if ImGui.SmallButton('Clear##tier_clear') then
+        SetTierDone(categoryIndex,tierIndex,false)
+    end
+
+    ImGui.Spacing()
+    DrawHeading('Targets')
+    for targetIndex,target in ipairs(targets) do
+        local key = ProgressKey(categoryIndex,tierIndex,targetIndex)
+        local isDone = State.progressDone[key] == true
+        local updated,changed = ImGui.Checkbox(
+            string.format('%s##t_%d_%d_%d',target,categoryIndex,tierIndex,targetIndex),
+            isDone
+        )
+        if changed then
+            State.progressDone[key] = updated and true or nil
+            SaveProgressChanges()
+        end
+    end
+end
+
+local function DrawSideFlagsUI()
+    DrawHeading('Side Flags')
+    ImGui.TextDisabled('Track keys, flags and goals that are not part of the tier checklist.')
     local completedFlags = 0
     for _,flag in ipairs(State.sideFlags) do
         if flag.done then
             completedFlags = completedFlags + 1
         end
     end
-    ImGui.Text(string.format(
-        'Side flags complete: %d / %d',
-        completedFlags,
-        #State.sideFlags
-    ))
+    ImGui.Text(string.format('Side flags complete: %d / %d',completedFlags,#State.sideFlags))
+    ImGui.ProgressBar(#State.sideFlags > 0 and completedFlags / #State.sideFlags or 0,-1,0,
+        string.format('%d / %d',completedFlags,#State.sideFlags))
 
-    State.newSideFlagName = ImGui.InputText(
-        'New side flag',
+    local submitted
+    State.newSideFlagName,submitted = ImGui.InputText(
+        '##new_side_flag',
         State.newSideFlagName,
-        80
+        80,
+        ImGuiInputTextFlags.EnterReturnsTrue
     )
     ImGui.SameLine()
-    if ImGui.Button('Add side flag') then
+    if ImGui.Button('Add side flag') or submitted then
         local name = (State.newSideFlagName or ''):gsub('^%s+',''):gsub('%s+$','')
+        local duplicate = false
+        for _,flag in ipairs(State.sideFlags) do
+            if flag.name:lower() == name:lower() then
+                duplicate = true
+            end
+        end
         if name == '' then
             State.progressStatus = 'Enter a name for the side flag.'
+        elseif duplicate then
+            State.progressStatus = 'That side flag is already tracked.'
         else
-            local duplicate = false
-            for _,flag in ipairs(State.sideFlags) do
-                if flag.name:lower() == name:lower() then
-                    duplicate = true
-                    break
-                end
-            end
-
-            if duplicate then
-                State.progressStatus = 'That side flag is already tracked.'
-            else
-                table.insert(State.sideFlags,{
-                    id=State.nextSideFlagID,
-                    name=name,
-                    done=false,
-                })
-                State.nextSideFlagID = State.nextSideFlagID + 1
-                State.newSideFlagName = ''
-                SaveProgressChanges()
-            end
+            table.insert(State.sideFlags,{id=State.nextSideFlagID,name=name,done=false})
+            State.nextSideFlagID = State.nextSideFlagID + 1
+            State.newSideFlagName = ''
+            SaveProgressChanges()
         end
     end
 
+    ImGui.Spacing()
+    if #State.sideFlags == 0 then
+        ImGui.TextDisabled('No side flags yet. Type a name above and press Enter.')
+    end
     for index=#State.sideFlags,1,-1 do
         local flag = State.sideFlags[index]
-        if ProgressMatchesFilter(flag.done) then
-            ImGui.PushID('side_flag_'..flag.id)
-            local updatedDone,changed = ImGui.Checkbox(
-                'Done##side_flag_'..flag.id,
-                flag.done
-            )
-            if changed then
-                flag.done = updatedDone
-                SaveProgressChanges()
-            end
-            ImGui.SameLine()
-            ImGui.Text(flag.name)
-            ImGui.SameLine()
-            if ImGui.SmallButton('Remove') then
-                table.remove(State.sideFlags,index)
-                SaveProgressChanges()
-            end
-            ImGui.PopID()
+        ImGui.PushID('side_flag_'..flag.id)
+        local updated,changed = ImGui.Checkbox(flag.name,flag.done)
+        if changed then
+            flag.done = updated
+            SaveProgressChanges()
+        end
+        ImGui.SameLine()
+        if ImGui.SmallButton('Remove') then
+            table.remove(State.sideFlags,index)
+            SaveProgressChanges()
+        end
+        ImGui.PopID()
+    end
+end
+
+local function DrawOverviewUI()
+    DrawHeading('Progress Overview')
+    for categoryIndex=1,2 do
+        local category = InstanceCategories[categoryIndex]
+        local done,total = CategoryStats(categoryIndex)
+        ImGui.Text(string.format('%s: %d / %d targets',category.name,done,total))
+        ImGui.ProgressBar(total > 0 and done / total or 0,-1,0,
+            string.format('%d%%',total > 0 and math.floor(done * 100 / total) or 0))
+        local maxTier = State.logMaxTier[categoryIndex]
+        if maxTier then
+            ImGui.TextDisabled(string.format('Highest tier announced in your log: Tier %d',maxTier))
         end
     end
 
-    ImGui.Separator()
-    ImGui.TextDisabled(State.progressStatus)
+    ImGui.Spacing()
+    DrawHeading('Next Steps')
+    for categoryIndex=1,2 do
+        local tierIndex,tier = FirstUnfinishedTier(categoryIndex)
+        if tierIndex then
+            ImGui.TextColored(ProgressColors.ember[1],ProgressColors.ember[2],ProgressColors.ember[3],1,
+                string.format('%s: %s',InstanceCategories[categoryIndex].name,tier.name))
+            local targets = GetInstanceTargets(tier)
+            for targetIndex,target in ipairs(targets) do
+                if not State.progressDone[ProgressKey(categoryIndex,tierIndex,targetIndex)] then
+                    ImGui.BulletText(target)
+                end
+            end
+            if ImGui.SmallButton(string.format('Open tier##next_%d',categoryIndex)) then
+                State.progressNav = string.format('t:%d:%d',categoryIndex,tierIndex)
+            end
+        else
+            ImGui.TextColored(ProgressColors.green[1],ProgressColors.green[2],ProgressColors.green[3],1,
+                InstanceCategories[categoryIndex].name..': everything complete!')
+        end
+    end
+
+    if State.autoTrackProgressLogs and CountLogTiers() > 0 then
+        ImGui.Spacing()
+        DrawHeading('Tier Completions Found In Log')
+        local names = {}
+        for tierName in pairs(State.logTiers) do
+            table.insert(names,tierName)
+        end
+        table.sort(names)
+        for _,tierName in ipairs(names) do
+            ImGui.BulletText(tierName)
+        end
+    end
+end
+
+local function DrawAllCharactersUI()
+    DrawHeading('All Characters')
+    if ImGui.Button('Refresh##all_chars') or not State.allCharactersScanned then
+        State.allCharactersScanned = true
+        local ok,rows = pcall(ScanAllCharacterProgress)
+        State.allCharacters = ok and rows or {}
+    end
+    ImGui.SameLine()
+    ImGui.TextDisabled('Every character that has run the Grimoire on this PC.')
+    for _,row in ipairs(State.allCharacters) do
+        ImGui.Text(string.format('%s (%s)',row.character,row.server))
+        ImGui.ProgressBar(row.total > 0 and row.done / row.total or 0,-1,0,
+            string.format('%d / %d',row.done,row.total))
+    end
+end
+
+local function DrawProgressNavUI()
+    local function NavItem(label,key)
+        if ImGui.Selectable(label..'##nav_'..key,State.progressNav == key) then
+            State.progressNav = key
+        end
+    end
+
+    NavItem('Overview','overview')
+    for categoryIndex=1,2 do
+        local category = InstanceCategories[categoryIndex]
+        local done,total = CategoryStats(categoryIndex)
+        ImGui.Spacing()
+        ImGui.TextDisabled(string.format('-- %s (%d/%d) --',category.name:upper(),done,total))
+        for tierIndex,tier in ipairs(category.tiers) do
+            local tierDone,tierTotal = TierStats(categoryIndex,tierIndex)
+            local complete = tierDone == tierTotal
+            if complete then
+                ImGui.PushStyleColor(ImGuiCol.Text,0.45,0.85,0.45,1)
+            end
+            NavItem(
+                string.format('%s %s (%d/%d)',complete and '[x]' or '[ ]',tier.name,tierDone,tierTotal),
+                string.format('t:%d:%d',categoryIndex,tierIndex)
+            )
+            if complete then
+                ImGui.PopStyleColor()
+            end
+        end
+    end
+    ImGui.Spacing()
+    ImGui.TextDisabled('-- TOOLS --')
+    NavItem('Side Flags','flags')
+    NavItem('All Characters','chars')
+    ImGui.Spacing()
+    ImGui.TextDisabled('-- GUIDE --')
+    for _,section in ipairs(GuideSections) do
+        NavItem(section.label,'g:'..section.id)
+    end
 end
 
 local function SetProgressLogTracking(enabled)
@@ -2663,21 +2721,10 @@ local function SetProgressLogTracking(enabled)
     end
 end
 
-local function DrawGuideUI()
-    ImGui.BeginChild('##guide_nav',200,0,true)
+local function DrawGuideSection(sectionID)
     for _,section in ipairs(GuideSections) do
-        if ImGui.Selectable(section.label..'##guide_'..section.id,State.selectedProgressPage == section.id) then
-            State.selectedProgressPage = section.id
-        end
-    end
-    ImGui.EndChild()
-
-    ImGui.SameLine()
-    ImGui.BeginChild('##guide_content',0,0,true)
-    for _,section in ipairs(GuideSections) do
-        if section.id == State.selectedProgressPage then
-            ImGui.TextColored(0.92,0.70,0.25,1,section.label)
-            ImGui.Separator()
+        if section.id == sectionID then
+            DrawHeading(section.label)
             for _,line in ipairs(section.lines) do
                 ImGui.Bullet()
                 ImGui.TextWrapped(line)
@@ -2686,12 +2733,17 @@ local function DrawGuideUI()
     end
     ImGui.Spacing()
     ImGui.TextDisabled('Source: https://www.eqmight.com')
-    ImGui.EndChild()
 end
 
 local function DrawProgressionUI()
+    local done,total = OverallStats()
+    local fraction = total > 0 and done / total or 0
+    ImGui.TextColored(ProgressColors.gold[1],ProgressColors.gold[2],ProgressColors.gold[3],1,
+        string.format('Progress: %d/%d targets complete (%d%%)',done,total,math.floor(fraction * 100)))
+    ImGui.ProgressBar(fraction,-1,0,string.format('%d%% overall completion',math.floor(fraction * 100)))
+
     local autoTrack,autoTrackChanged = ImGui.Checkbox(
-        'Track progress from EverQuest logs (/log on)##progress_auto',
+        'Auto-track from EverQuest logs (/log on)##progress_auto',
         State.autoTrackProgressLogs
     )
     if autoTrackChanged then
@@ -2699,48 +2751,35 @@ local function DrawProgressionUI()
     end
     ImGui.SameLine()
     ImGui.TextDisabled(State.logStatus)
-    if State.autoTrackProgressLogs then
-        ImGui.TextDisabled(string.format(
-            'Log updates this session: %d | tier completions announced: %d',
-            State.logChanges,
-            CountLogTiers()
-        ))
-        if CountLogTiers() > 0 then
-            local names = {}
-            for tierName in pairs(State.logTiers) do
-                table.insert(names,tierName)
-            end
-            table.sort(names)
-            ImGui.TextWrapped('Completed: '..table.concat(names,', '))
-        end
-    end
+    ImGui.Separator()
 
-    if ImGui.BeginTabBar('##progression_views') then
-        if ImGui.BeginTabItem('Checklist') then
-            DrawMightProgressUI()
-            ImGui.EndTabItem()
+    ImGui.BeginChild('##prog_nav',250,0,true)
+    DrawProgressNavUI()
+    ImGui.EndChild()
+
+    ImGui.SameLine()
+    ImGui.BeginChild('##prog_detail',0,0,true)
+    local nav = State.progressNav or 'overview'
+    local categoryIndex,tierIndex = nav:match('^t:(%d+):(%d+)$')
+    if categoryIndex then
+        local category = InstanceCategories[tonumber(categoryIndex)]
+        if category and category.tiers[tonumber(tierIndex)] then
+            DrawTierDetail(tonumber(categoryIndex),tonumber(tierIndex))
+        else
+            DrawOverviewUI()
         end
-        if ImGui.BeginTabItem('All Characters') then
-            if ImGui.Button('Refresh##all_chars') or #State.allCharacters == 0 and not State.allCharactersScanned then
-                State.allCharactersScanned = true
-                local ok,rows = pcall(ScanAllCharacterProgress)
-                State.allCharacters = ok and rows or {}
-            end
-            ImGui.SameLine()
-            ImGui.TextDisabled('Every character that has run the Grimoire on this PC.')
-            for _,row in ipairs(State.allCharacters) do
-                ImGui.Text(string.format('%s (%s)',row.character,row.server))
-                ImGui.ProgressBar(row.total > 0 and row.done / row.total or 0,-1,0,
-                    string.format('%d / %d',row.done,row.total))
-            end
-            ImGui.EndTabItem()
-        end
-        if ImGui.BeginTabItem('Guide') then
-            DrawGuideUI()
-            ImGui.EndTabItem()
-        end
-        ImGui.EndTabBar()
+    elseif nav == 'flags' then
+        DrawSideFlagsUI()
+    elseif nav == 'chars' then
+        DrawAllCharactersUI()
+    elseif nav:sub(1,2) == 'g:' then
+        DrawGuideSection(nav:sub(3))
+    else
+        DrawOverviewUI()
     end
+    ImGui.Spacing()
+    ImGui.TextDisabled(State.progressStatus)
+    ImGui.EndChild()
 end
 
 local function WaitForCondition(condition,timeoutMs)
