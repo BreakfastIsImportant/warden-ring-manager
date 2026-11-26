@@ -336,6 +336,9 @@ local State = {
     logStatus='Log tracking is off.',
     allCharacters={},
     updateAllChars=false,
+    travelSetupDone=false,
+    hubsAllChars=true,
+    selectToolsTab=false,
     promptAllChars=true,
     charSkip={},
     pendingManual=nil,
@@ -493,6 +496,11 @@ local function LoadProgress()
         if accessID then
             State.accessDone[accessID] = true
         end
+        local setupDone,hubsAll = line:match('^W|([01])|([01])$')
+        if setupDone then
+            State.travelSetupDone = setupDone == '1'
+            State.hubsAllChars = hubsAll == '1'
+        end
         local updateAll,promptAll = line:match('^U|([01])|([01])$')
         if updateAll then
             State.updateAllChars = updateAll == '1'
@@ -572,6 +580,7 @@ local function SaveProgress()
             hub.key,hub.enabled and 1 or 0,hub.mode,EncodeText(hub.short or ''),EncodeText(hub.item or '')))
     end
 
+    file:write(string.format('W|%d|%d\n',State.travelSetupDone and 1 or 0,State.hubsAllChars and 1 or 0))
     file:write(string.format('U|%d|%d\n',State.updateAllChars and 1 or 0,State.promptAllChars and 1 or 0))
     for skipKey,skipped in pairs(State.charSkip) do
         if skipped then
@@ -2500,6 +2509,48 @@ local function ManualUpdate(changes)
     end
 end
 
+-- Copies the driver's travel settings into every other included character's save file.
+local function PropagateHubs()
+    local ok,lfs = pcall(require,'lfs')
+    if not ok then
+        return 0
+    end
+    local ownKey = CurrentCharKey()
+    local mine = {string.format('W|%d|%d',State.travelSetupDone and 1 or 0,State.hubsAllChars and 1 or 0)}
+    for _,hub in ipairs(State.travelHubs) do
+        table.insert(mine,string.format('H|%s|%d|%s|%s|%s',
+            hub.key,hub.enabled and 1 or 0,hub.mode,EncodeText(hub.short or ''),EncodeText(hub.item or '')))
+    end
+    local touched = 0
+    for entry in lfs.dir(mq.configDir) do
+        local server,character = entry:match('^WardenCompanionProgress_(.-)_([^_]+)%.txt$')
+        local key = server and (server..'_'..character)
+        if key and key ~= ownKey and not State.charSkip[key] then
+            local path = mq.configDir..'\\'..entry
+            local file = io.open(path,'r')
+            if file then
+                local lines = {}
+                for line in file:lines() do
+                    if not line:match('^[HW]|') then
+                        table.insert(lines,line)
+                    end
+                end
+                file:close()
+                for _,line in ipairs(mine) do
+                    table.insert(lines,line)
+                end
+                local out = io.open(path,'w')
+                if out then
+                    out:write(table.concat(lines,'\n')..'\n')
+                    out:close()
+                    touched = touched + 1
+                end
+            end
+        end
+    end
+    return touched
+end
+
 local function GetProgressDisposition(text)
     local lowerText = text:lower()
     local incompleteMarkers = {
@@ -3804,6 +3855,11 @@ local function ParseQuestGivers(text)
 end
 
 local function RequestAutoNPC(giver)
+    if not State.travelSetupDone then
+        State.selectToolsTab = true
+        State.autoStatus = 'First run: choose your travel methods in the Tools tab, then press "Done" and click Go again.'
+        return
+    end
     if State.autoRunning then
         State.autoStatus = 'Already working on a request; press Stop first.'
         return
@@ -3945,14 +4001,17 @@ local function DrawGuideSection(sectionID)
 end
 
 local function DrawTravelHubs()
-    if not ImGui.CollapsingHeader('Travel methods (AA / item clicks)##travel_hubs') then
-        return
-    end
     ImGui.TextWrapped('Auto NPC uses these to reach their zone, falling back to /travelto. Hold an item on your cursor and click "Use cursor item" to turn it into a travel click, like a hotbutton.')
+    local dirty = false
+    local value,toggled = ImGui.Checkbox('Apply these settings to all my characters (set once from this driver character)##hubs_all',State.hubsAllChars)
+    if toggled then
+        State.hubsAllChars = value
+        dirty = true
+    end
     for index,hub in ipairs(State.travelHubs) do
         local changed
         hub.enabled,changed = ImGui.Checkbox(hub.label..'##hub_on_'..index,hub.enabled)
-        if changed then State.progressPendingSave = true end
+        if changed then dirty = true end
         ImGui.SameLine()
         ImGui.TextColored(ProgressColors.zone[1],ProgressColors.zone[2],ProgressColors.zone[3],1,
             '-> '..((hub.zone or '') ~= '' and hub.zone or '(not set)'))
@@ -3964,17 +4023,17 @@ local function DrawTravelHubs()
             if zoneChanged then
                 hub.short,hub.zone = value,value
                 hub.enabled = value ~= ''
-                State.progressPendingSave = true
+                dirty = true
             end
         end
         if ImGui.RadioButton('AA: '..hub.aa..'##hub_aa_'..index,hub.mode == 'aa') then
             hub.mode = 'aa'
-            State.progressPendingSave = true
+            dirty = true
         end
         ImGui.SameLine()
         if ImGui.RadioButton('Item click##hub_item_'..index,hub.mode == 'item') then
             hub.mode = 'item'
-            State.progressPendingSave = true
+            dirty = true
         end
         if hub.mode == 'item' then
             ImGui.PushItemWidth(220)
@@ -3982,14 +4041,14 @@ local function DrawTravelHubs()
             ImGui.PopItemWidth()
             if itemChanged then
                 hub.item = value
-                State.progressPendingSave = true
+                dirty = true
             end
             ImGui.SameLine()
             if ImGui.SmallButton('Use cursor item##hub_cursor_'..index) then
                 if (mq.TLO.Cursor.ID() or 0) > 0 then
                     hub.item = mq.TLO.Cursor.Name() or ''
                     mq.cmd('/autoinventory')
-                    State.progressPendingSave = true
+                    dirty = true
                 else
                     State.autoStatus = 'Pick up the item with your mouse first, then click "Use cursor item".'
                 end
@@ -3997,6 +4056,28 @@ local function DrawTravelHubs()
         end
         ImGui.Separator()
     end
+    if ImGui.Button(State.travelSetupDone and 'Apply now##hubs_done' or 'Done - save travel setup##hubs_done') then
+        State.travelSetupDone = true
+        dirty = true
+    end
+    if dirty then
+        SaveProgressChanges()
+        if State.hubsAllChars then
+            local touched = PropagateHubs()
+            State.progressStatus = string.format('Travel settings applied to %d other character(s).',touched)
+        end
+    end
+end
+
+local function DrawToolsUI()
+    DrawHeading('Travel methods (AA / item clicks)')
+    if not State.travelSetupDone then
+        ImGui.TextColored(1,0.75,0.3,1,'First-time setup: choose how Grimoire travels, then press Done.')
+    end
+    DrawTravelHubs()
+    ImGui.Spacing()
+    DrawHeading('Characters')
+    DrawCharacterSettings()
 end
 
 local function DrawProgressionUI()
@@ -4041,7 +4122,6 @@ local function DrawProgressionUI()
             end
         end
     end
-    DrawTravelHubs()
     ImGui.Separator()
 
     ImGui.BeginChild('##prog_nav',250,0,true)
@@ -4699,6 +4779,13 @@ local function DrawUI()
 
             if ImGui.BeginTabItem('Currency') then
                 DrawAltCurrencyUI()
+                ImGui.EndTabItem()
+            end
+
+            local toolsFlags = (State.selectToolsTab and ImGuiTabItemFlags and ImGuiTabItemFlags.SetSelected) or 0
+            State.selectToolsTab = false
+            if ImGui.BeginTabItem('Tools',nil,toolsFlags) then
+                DrawToolsUI()
                 ImGui.EndTabItem()
             end
 
