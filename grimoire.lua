@@ -885,16 +885,35 @@ local function NavigateToPietri()
 end
 
 -- Auto NPC runner: travels to the NPC's zone, walks to the NPC, targets and hails, then says/gives what is configured.
-local function ResolveZoneShortName(location)
-    local candidates = {location,location:match('^(.-) in ') or '','The '..location,(location:gsub('^The ',''))}
-    for _,candidate in ipairs(candidates) do
-        if candidate ~= '' then
-            local zone = mq.TLO.Zone(candidate)
-            local short = zone and zone.ShortName and zone.ShortName()
-            if short and tostring(short) ~= 'NULL' and tostring(short) ~= '' then
-                return tostring(short):lower()
-            end
+local zoneNameIndex
+local function BuildZoneIndex()
+    zoneNameIndex = {}
+    for id = 1,1200 do
+        local zone = mq.TLO.Zone(id)
+        local long = zone and zone.Name and zone.Name()
+        local short = zone and zone.ShortName and zone.ShortName()
+        if long and short and tostring(long) ~= 'NULL' and tostring(short) ~= 'NULL' and tostring(short) ~= '' then
+            zoneNameIndex[tostring(long):lower()] = tostring(short):lower()
         end
+    end
+end
+
+local function ResolveZoneShortName(location)
+    if not zoneNameIndex then
+        pcall(BuildZoneIndex)
+    end
+    local base = location:match('^(.-) in ') or location
+    local candidates = {location,base,'the '..base,(base:gsub('^[Tt]he ',''))}
+    for _,candidate in ipairs(candidates) do
+        local hit = zoneNameIndex and zoneNameIndex[candidate:lower()]
+        if hit then
+            return hit
+        end
+    end
+    local zone = mq.TLO.Zone(base)
+    local short = zone and zone.ShortName and zone.ShortName()
+    if short and tostring(short) ~= 'NULL' and tostring(short) ~= '' then
+        return tostring(short):lower()
     end
     return nil
 end
@@ -909,17 +928,32 @@ local function AutoWait(condition,timeoutMs)
             return true
         end
         mq.delay(200)
+        mq.doevents()
     end
     return false
 end
 
+-- Collects [keywords] from NPC dialogue so they can be said back.
+local function OnNPCSays(line,speaker,text)
+    State.autoKeywords = State.autoKeywords or {}
+    for keyword in tostring(text):gmatch('%[([^%]]+)%]') do
+        State.autoKeywords[keyword] = true
+    end
+end
+mq.event('grimoire_npc_says',"#1# says, '#2#'",OnNPCSays)
+
 local function RunAutoRequest(request)
     local function status(text)
         State.autoStatus = text
+        printf('\ag[Grimoire]\ax %s',text)
     end
 
     if not mq.TLO.Plugin('MQ2Nav').IsLoaded() then
-        return status('MQ2Nav is not loaded; cannot travel.')
+        mq.cmd('/plugin MQ2Nav')
+        mq.delay(1000)
+    end
+    if not mq.TLO.Plugin('MQ2Nav').IsLoaded() then
+        return status('MQ2Nav is not loaded; cannot navigate.')
     end
 
     local currentShort = tostring(mq.TLO.Zone.ShortName() or ''):lower()
@@ -930,24 +964,32 @@ local function RunAutoRequest(request)
             targetShort = short
         end
     end
-    if not targetShort and not mq.TLO.Spawn('npc '..request.npc)() then
-        return status('Could not work out which zone '..request.npc..' is in.')
+    if not targetShort and not mq.TLO.Spawn('npc '..request.npc:gsub(' ','_'))() then
+        return status('Could not work out which zone '..request.npc..' is in ('..table.concat(request.locations,', ')..').')
     end
 
     if targetShort and targetShort ~= currentShort then
+        if not mq.TLO.Plugin('MQ2EasyFind').IsLoaded() then
+            mq.cmd('/plugin MQ2EasyFind')
+            mq.delay(1000)
+        end
+        if not mq.TLO.Plugin('MQ2EasyFind').IsLoaded() then
+            return status('MQ2EasyFind is not loaded; it provides /travelto. Go to '..targetShort..' manually.')
+        end
         status('Travelling to '..targetShort..' for '..request.npc..'...')
         mq.cmdf('/travelto %s',targetShort)
         local arrived = AutoWait(function()
             return tostring(mq.TLO.Zone.ShortName() or ''):lower() == targetShort
         end,300000)
         if not arrived then
+            mq.cmd('/travelto stop')
             mq.cmd('/nav stop')
             return status(State.autoCancel and 'Stopped.' or 'Did not reach '..targetShort..'.')
         end
         mq.delay(3000)
     end
 
-    local npc = mq.TLO.Spawn('npc '..request.npc)
+    local npc = mq.TLO.Spawn('npc '..request.npc:gsub(' ','_'))
     if not AutoWait(function() return npc() ~= nil end,20000) then
         return status(request.npc..' was not found in this zone.')
     end
@@ -976,17 +1018,34 @@ local function RunAutoRequest(request)
     end
 
     status('Hailing '..request.npc..'...')
-    mq.cmd('/keypress HAIL')
-    mq.delay(1500)
+    State.autoKeywords = {}
+    mq.cmdf('/say Hail, %s',mq.TLO.Target.CleanName() or request.npc)
+    AutoWait(function() return next(State.autoKeywords) ~= nil end,4000)
 
-    for _,phrase in ipairs(request.say) do
+    local phrases = request.say
+    if #phrases == 0 then
+        -- No phrases configured: follow the NPC's own [instance]-style keyword if it offers one.
+        for keyword in pairs(State.autoKeywords) do
+            if keyword:lower():find('instance') then
+                table.insert(phrases,keyword)
+            end
+        end
+    end
+    for _,phrase in ipairs(phrases) do
         if State.autoCancel then
             return status('Stopped.')
         end
         status('Saying "'..phrase..'"...')
         mq.cmdf('/say %s',phrase)
         mq.delay(1500)
+        mq.doevents()
     end
+    local said = {}
+    for keyword in pairs(State.autoKeywords) do
+        table.insert(said,keyword)
+    end
+    table.sort(said)
+    State.autoKeywordList = said
 
     if request.give ~= '' then
         local item = mq.TLO.FindItem('='..request.give)
@@ -3517,6 +3576,15 @@ local function DrawProgressionUI()
         ImGui.TextColored(ProgressColors.cyan[1],ProgressColors.cyan[2],ProgressColors.cyan[3],1,'Auto NPC: '..State.autoStatus)
     else
         ImGui.TextDisabled('Auto NPC: press a "Go: <npc>" button in the Instance Guide. Separate several say phrases with ;')
+    end
+    if State.autoKeywordList and #State.autoKeywordList > 0 then
+        ImGui.TextDisabled('NPC keywords - click to say:')
+        for index,keyword in ipairs(State.autoKeywordList) do
+            ImGui.SameLine()
+            if ImGui.SmallButton(keyword..'##npc_kw_'..index) then
+                mq.cmdf('/say %s',keyword)
+            end
+        end
     end
     ImGui.Separator()
 
