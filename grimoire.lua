@@ -310,6 +310,12 @@ local State = {
     logTiers={},
     logMaxTier={},
     progressNav='overview',
+    autoRequest=nil,
+    autoStatus='',
+    autoCancel=false,
+    autoRunning=false,
+    autoSay='',
+    autoGive='',
     navBack={},
     navForward={},
     accessDone={},
@@ -875,6 +881,132 @@ local function NavigateToPietri()
     end
 
     return true
+end
+
+-- Auto NPC runner: travels to the NPC's zone, walks to the NPC, targets and hails, then says/gives what is configured.
+local function ResolveZoneShortName(location)
+    local candidates = {location,location:match('^(.-) in ') or '','The '..location,(location:gsub('^The ',''))}
+    for _,candidate in ipairs(candidates) do
+        if candidate ~= '' then
+            local zone = mq.TLO.Zone(candidate)
+            local short = zone and zone.ShortName and zone.ShortName()
+            if short and tostring(short) ~= 'NULL' and tostring(short) ~= '' then
+                return tostring(short):lower()
+            end
+        end
+    end
+    return nil
+end
+
+local function AutoWait(condition,timeoutMs)
+    local start = mq.gettime()
+    while mq.gettime() - start < timeoutMs do
+        if State.autoCancel then
+            return false
+        end
+        if condition() then
+            return true
+        end
+        mq.delay(200)
+    end
+    return false
+end
+
+local function RunAutoRequest(request)
+    local function status(text)
+        State.autoStatus = text
+    end
+
+    if not mq.TLO.Plugin('MQ2Nav').IsLoaded() then
+        return status('MQ2Nav is not loaded; cannot travel.')
+    end
+
+    local currentShort = tostring(mq.TLO.Zone.ShortName() or ''):lower()
+    local targetShort
+    for _,location in ipairs(request.locations) do
+        local short = ResolveZoneShortName(location)
+        if short and (not targetShort or short == currentShort) then
+            targetShort = short
+        end
+    end
+    if not targetShort and not mq.TLO.Spawn('npc '..request.npc)() then
+        return status('Could not work out which zone '..request.npc..' is in.')
+    end
+
+    if targetShort and targetShort ~= currentShort then
+        status('Travelling to '..targetShort..' for '..request.npc..'...')
+        mq.cmdf('/travelto %s',targetShort)
+        local arrived = AutoWait(function()
+            return tostring(mq.TLO.Zone.ShortName() or ''):lower() == targetShort
+        end,300000)
+        if not arrived then
+            mq.cmd('/nav stop')
+            return status(State.autoCancel and 'Stopped.' or 'Did not reach '..targetShort..'.')
+        end
+        mq.delay(3000)
+    end
+
+    local npc = mq.TLO.Spawn('npc '..request.npc)
+    if not AutoWait(function() return npc() ~= nil end,20000) then
+        return status(request.npc..' was not found in this zone.')
+    end
+
+    local npcID = npc.ID()
+    status('Walking to '..request.npc..'...')
+    mq.cmdf('/target id %d',npcID)
+    mq.delay(200)
+    if npc.Distance3D() > 15 then
+        mq.cmdf('/nav id %d dist=12',npcID)
+        AutoWait(function() return not npc() or npc.Distance3D() <= 12 end,120000)
+        mq.cmd('/nav stop')
+        mq.delay(250)
+    end
+    if State.autoCancel then
+        return status('Stopped.')
+    end
+    if not npc() or npc.Distance3D() > 20 then
+        return status('Could not reach '..request.npc..'.')
+    end
+
+    mq.cmdf('/target id %d',npcID)
+    mq.delay(300)
+    if mq.TLO.Target.ID() ~= npcID then
+        return status('Could not target '..request.npc..'.')
+    end
+
+    status('Hailing '..request.npc..'...')
+    mq.cmd('/keypress HAIL')
+    mq.delay(1500)
+
+    for _,phrase in ipairs(request.say) do
+        if State.autoCancel then
+            return status('Stopped.')
+        end
+        status('Saying "'..phrase..'"...')
+        mq.cmdf('/say %s',phrase)
+        mq.delay(1500)
+    end
+
+    if request.give ~= '' then
+        local item = mq.TLO.FindItem('='..request.give)
+        if not item() then
+            return status('Arrived, but you do not have "'..request.give..'" to hand in.')
+        end
+        status('Handing in '..request.give..'...')
+        mq.cmdf('/nomodkey /itemnotify "%s" leftmouseup',request.give)
+        if not AutoWait(function() return (mq.TLO.Cursor.ID() or 0) > 0 end,5000) then
+            return status('Could not pick up '..request.give..'.')
+        end
+        mq.cmd('/click left target')
+        AutoWait(function() return (mq.TLO.Cursor.ID() or 0) == 0 end,10000)
+        mq.delay(300)
+        mq.cmd('/notify GiveWnd GVW_Give_Button leftmouseup')
+        mq.delay(1000)
+        if (mq.TLO.Cursor.ID() or 0) > 0 then
+            mq.cmd('/autoinventory')
+        end
+    end
+    status('Done with '..request.npc..'.')
 end
 
 local function AcceptConfirmationIfOpen(timeoutMs)
@@ -3179,6 +3311,80 @@ local function SetProgressLogTracking(enabled)
     end
 end
 
+local function ParseQuestGivers(text)
+    local givers = {}
+    local depth,buffer = 0,''
+    local function flush()
+        local name = buffer:match('^%s*([^(]-)%s*%(') or buffer:match('^%s*(.-)%s*$')
+        local locations = {}
+        for inner in buffer:gmatch('%(([^)]*)%)') do
+            for location in inner:gmatch('[^,.]+') do
+                location = location:gsub('^%s+',''):gsub('%s+$','')
+                if location ~= '' then
+                    table.insert(locations,location)
+                end
+            end
+        end
+        if name and name ~= '' and name:match('^%u') and #name < 40 then
+            table.insert(givers,{name=name,locations=locations})
+        end
+        buffer = ''
+    end
+    for char in text:gmatch('.') do
+        if char == '(' then depth = depth + 1 end
+        if char == ')' then depth = math.max(0,depth - 1) end
+        if char == ',' and depth == 0 then
+            flush()
+        else
+            buffer = buffer..char
+        end
+    end
+    flush()
+    return givers
+end
+
+local function RequestAutoNPC(giver)
+    if State.autoRunning then
+        State.autoStatus = 'Already working on a request; press Stop first.'
+        return
+    end
+    local say = {}
+    for phrase in (State.autoSay or ''):gmatch('[^;]+') do
+        phrase = phrase:gsub('^%s+',''):gsub('%s+$','')
+        if phrase ~= '' then
+            table.insert(say,phrase)
+        end
+    end
+    State.autoCancel = false
+    State.autoRequest = {
+        npc=giver.name,
+        locations=giver.locations,
+        say=say,
+        give=(State.autoGive or ''):gsub('^%s+',''):gsub('%s+$',''),
+    }
+    State.autoStatus = 'Queued '..giver.name..'...'
+end
+
+-- "Go" buttons that travel to each quest giver and run the Auto NPC options.
+local function DrawQuestGivers(text,idPrefix)
+    ImGui.TextDisabled('Quest giver:')
+    for index,giver in ipairs(ParseQuestGivers(text)) do
+        ImGui.SameLine()
+        ImGui.PushStyleColor(ImGuiCol.Text,ProgressColors.npc[1],ProgressColors.npc[2],ProgressColors.npc[3],1)
+        local clicked = ImGui.SmallButton(string.format('Go: %s##%s_%d',giver.name,idPrefix,index))
+        ImGui.PopStyleColor()
+        if clicked then
+            RequestAutoNPC(giver)
+        end
+        if ImGui.IsItemHovered() and #giver.locations > 0 then
+            ImGui.SetTooltip('Travel to '..giver.name..' ('..table.concat(giver.locations,', ')..'), hail, then run the Auto NPC options.')
+        end
+        ImGui.SameLine(0,4)
+        ImGui.TextColored(ProgressColors.zone[1],ProgressColors.zone[2],ProgressColors.zone[3],1,
+            #giver.locations > 0 and '('..giver.locations[1]..')' or '')
+    end
+end
+
 local function DrawInstanceEntry(tierNumber,index,instance,idPrefix)
     local open = ImGui.CollapsingHeader(string.format('%s##%s_%d_%d',instance.title,idPrefix,tierNumber,index))
     if not open then
@@ -3186,7 +3392,7 @@ local function DrawInstanceEntry(tierNumber,index,instance,idPrefix)
     end
     ImGui.Indent()
     if instance.giver ~= '' then
-        DrawRichText('Quest giver: '..instance.giver)
+        DrawQuestGivers(instance.giver,string.format('qg_%s_%d_%d',idPrefix,tierNumber,index))
     end
     local facts = {}
     if instance.party ~= '' then table.insert(facts,'Party: '..instance.party) end
@@ -3294,6 +3500,23 @@ local function DrawProgressionUI()
     end
     ImGui.SameLine()
     ImGui.TextDisabled(State.logStatus)
+    ImGui.PushItemWidth(180)
+    State.autoSay = ImGui.InputText('Say after hail##auto_say',State.autoSay or '',120)
+    ImGui.SameLine()
+    State.autoGive = ImGui.InputText('Hand in item##auto_give',State.autoGive or '',80)
+    ImGui.PopItemWidth()
+    ImGui.SameLine()
+    if State.autoRunning or State.autoRequest then
+        if ImGui.SmallButton('Stop##auto_stop') then
+            State.autoCancel = true
+            mq.cmd('/nav stop')
+        end
+    end
+    if State.autoStatus ~= '' then
+        ImGui.TextColored(ProgressColors.cyan[1],ProgressColors.cyan[2],ProgressColors.cyan[3],1,'Auto NPC: '..State.autoStatus)
+    else
+        ImGui.TextDisabled('Auto NPC: press a "Go: <npc>" button in the Instance Guide. Separate several say phrases with ;')
+    end
     ImGui.Separator()
 
     ImGui.BeginChild('##prog_nav',250,0,true)
@@ -3922,6 +4145,17 @@ mq.imgui.init(
 
 while State.open do
     mq.delay(100)
+    if State.autoRequest and not State.autoRunning then
+        local request = State.autoRequest
+        State.autoRequest = nil
+        State.autoRunning = true
+        local ok,runError = pcall(RunAutoRequest,request)
+        if not ok then
+            State.autoStatus = 'Auto NPC failed: '..tostring(runError)
+        end
+        State.autoRunning = false
+        State.autoCancel = false
+    end
     if State.autoTrackProgressLogs and State.logFile then
         local now = os.time()
         if State.logImporting or now - State.logLastPoll >= 2 then
