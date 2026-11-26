@@ -2732,7 +2732,7 @@ local function DrawTargetName(target)
         ImGui.SameLine(0,6)
         ImGui.TextColored(ProgressColors.zone[1],ProgressColors.zone[2],ProgressColors.zone[3],1,zone)
     else
-        DrawRichText(target)
+        ImGui.TextColored(ProgressColors.npc[1],ProgressColors.npc[2],ProgressColors.npc[3],1,target)
     end
 end
 
@@ -3014,7 +3014,8 @@ local function DrawOverviewUI()
             local targets = GetInstanceTargets(tier)
             for targetIndex,target in ipairs(targets) do
                 if not State.progressDone[ProgressKey(categoryIndex,tierIndex,targetIndex)] then
-                    ImGui.BulletText(target)
+                    ImGui.Bullet()
+                    DrawTargetName(target)
                 end
             end
             if ImGui.SmallButton(string.format('Open tier##next_%d',categoryIndex)) then
