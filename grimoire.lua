@@ -2691,6 +2691,29 @@ local function PumpProgressLog()
     end
 end
 
+-- Live chat capture: works even when EverQuest logging is off.
+local function OnProgressChat(line)
+    if not State.autoTrackProgressLogs then
+        return
+    end
+    State.logTiers = State.logTiers or {}
+    State.logMaxTier = State.logMaxTier or {}
+    local name = EscapePattern(GetLogCharacterName())
+    local ok,added = pcall(ProcessProgressLogLine,'] '..line,name)
+    local changes = ApplyTierCompletion()
+    if ok and added then
+        changes = changes + added
+    end
+    if changes > 0 then
+        State.logChanges = (State.logChanges or 0) + changes
+        State.progressPendingSave = true
+        State.progressPendingChanges = State.progressPendingChanges + changes
+    end
+end
+mq.event('grimoire_prog_first','#*#for the first time#*#',OnProgressChat)
+mq.event('grimoire_prog_tier','#*#progression!#*#',OnProgressChat)
+mq.event('grimoire_prog_defeat','#*#was defeated by#*#',OnProgressChat)
+
 local function CountLogTiers()
     local count = 0
     for _ in pairs(State.logTiers) do
