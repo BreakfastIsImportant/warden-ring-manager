@@ -31,7 +31,7 @@ The tracker is EQ Might only: manual checkboxes always work, and the optional **
 ## 🚀 Install
 
 1. Copy `warden-ring-manager/grimoire.lua` to your MacroQuest `lua` directory as `grimoire.lua`.
-2. Copy the `pt-main` folder into the same `lua` directory, preserving its name and contents.
+2. Copy the bundled `pt-main` folder into the same `lua` directory, keeping its name. It is the Pearl Tracker, originally by Chadow of the EQ Might Discord (see `pt-main/README.md`).
 3. Make sure MacroQuest's Lua and ImGui support are available.
 4. Load **MQ2Nav** if you want automatic travel to Pietri.
 5. In game, run:
@@ -62,4 +62,5 @@ The calculator references [EQ Might progression](https://www.eqmight.com/progres
 ## 📦 Files
 
 - `grimoire.lua` — the MacroQuest script
+- `pt-main/` — bundled Pearl Tracker (credit: Chadow)
 - `README.md` — features, setup, and usage
