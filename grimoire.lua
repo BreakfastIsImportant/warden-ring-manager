@@ -275,6 +275,7 @@ local GuideSections = {
 
 local State = {
     open=true,
+    showWindow=false,
     currentIndex=1,
     targetIndex=1,
     status='Ready',
@@ -4024,7 +4025,49 @@ local function ConstrainGrimoireSize(_,currentSize,desiredSize)
     return ImVec2(width,width / GRIMOIRE_ASPECT)
 end
 
+local LAUNCHER_ICON = 777
+local LAUNCHER_FLAGS = bit32.bor(
+    ImGuiWindowFlags.NoTitleBar,
+    ImGuiWindowFlags.AlwaysAutoResize,
+    ImGuiWindowFlags.NoScrollbar,
+    ImGuiWindowFlags.NoBackground,
+    ImGuiWindowFlags.NoFocusOnAppearing
+)
+
+-- Book icon that stays on screen; clicking it shows or hides the Grimoire window.
+local function DrawLauncher()
+    ImGui.SetNextWindowPos(60,220,ImGuiCond.FirstUseEver)
+    ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding,2,2)
+    local visible = ImGui.Begin('##GrimoireLauncher',true,LAUNCHER_FLAGS)
+    if visible then
+        itemIcons:SetTextureCell(LAUNCHER_ICON - ITEM_ICON_OFFSET)
+        ImGui.DrawTextureAnimation(itemIcons,40,40)
+        if ImGui.IsItemHovered() then
+            ImGui.SetTooltip(State.showWindow and 'Hide EQMight Grimoire' or 'Open EQMight Grimoire')
+            if ImGui.IsMouseReleased(0) then
+                local okDrag,dragX,dragY = pcall(ImGui.GetMouseDragDelta,0)
+                if not okDrag or (math.abs(dragX or 0) + math.abs(dragY or 0)) < 4 then
+                    State.showWindow = not State.showWindow
+                end
+            end
+        end
+        if ImGui.BeginPopupContextItem('##grimoire_launcher_menu') then
+            if ImGui.MenuItem('Exit Grimoire') then
+                State.open = false
+            end
+            ImGui.EndPopup()
+        end
+    end
+    ImGui.End()
+    ImGui.PopStyleVar()
+end
+
 local function DrawUI()
+    DrawLauncher()
+    if not State.showWindow then
+        State.swapRequested = false
+        return
+    end
     ImGui.SetNextWindowSize(GRIMOIRE_WIDTH,GRIMOIRE_HEIGHT,ImGuiCond.FirstUseEver)
     ImGui.SetNextWindowSizeConstraints(
         ImVec2(220,156),
@@ -4038,7 +4081,7 @@ local function DrawUI()
     ImGui.PushStyleVar(ImGuiStyleVar.WindowBorderSize,2)
     ImGui.PushStyleVar(ImGuiStyleVar.ItemSpacing,10,8)
     local draw = false
-    State.open,draw = ImGui.Begin('EQMight Grimoire',State.open)
+    State.showWindow,draw = ImGui.Begin('EQMight Grimoire',State.showWindow)
 
     if draw then
         RefreshRing()
@@ -4093,7 +4136,7 @@ local function DrawUI()
         end
     end
 
-    if not State.open then
+    if not State.showWindow then
         State.swapRequested = false
     end
 

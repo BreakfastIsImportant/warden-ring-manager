@@ -45,6 +45,8 @@ The tracker does not read the NPC popup. A one-shot dialogue probe caused a clie
    /lua run grimoire
    ```
 
+   A draggable book icon appears on screen. Click it to open or hide the Grimoire; it stays on screen after the window is closed. Right-click it and choose **Exit Grimoire** to stop the script.
+
 ## 🎮 Use
 
 1. Open **Rings** to select a target ring version and configure its augments.
