@@ -2851,6 +2851,27 @@ end
 mq.event('grimoire_level_unlock','#*#unlock level#*#',OnLevelUnlock)
 mq.event('grimoire_level_unlock2','#*#level unlock#*#',OnLevelUnlock)
 
+-- Hailing a boss's spirit grants a character flag, which proves that boss was defeated.
+local function OnHailSaid(line,target)
+    State.lastHail = {name=target,time=mq.gettime()}
+end
+
+local function OnCharacterFlag()
+    local hail = State.lastHail
+    if not State.autoTrackProgressLogs or not hail or mq.gettime() - hail.time > 5000 then
+        return
+    end
+    local boss = hail.name:gsub('^[Tt]he ',''):gsub('^Spirit of ',''):gsub('^Planar Projection of ','')
+    local changes = TrackKilledTarget(boss)
+    if changes > 0 then
+        State.progressPendingSave = true
+        State.progressPendingChanges = State.progressPendingChanges + changes
+        State.logStatus = 'Character flag from hailing '..hail.name..': '..boss..' marked complete.'
+    end
+end
+mq.event('grimoire_hail_said',"You say, 'Hail, #1#'",OnHailSaid)
+mq.event('grimoire_char_flag','#*#You receive a character flag!#*#',OnCharacterFlag)
+
 local function OnInstanceSection(line,section)
     State.offerSection = section
 end
