@@ -4011,6 +4011,58 @@ local function PushGrimoireTheme()
     return pushed
 end
 
+local function TomeColor(r,g,b,a)
+    return ImGui.GetColorU32(ImVec4(r,g,b,a or 1))
+end
+
+-- Paints an open-tome look (leather cover, page block, spine, gold trim) behind the window content.
+local function DrawTomeFrame()
+    local pos = ImGui.GetWindowPosVec()
+    local size = ImGui.GetWindowSizeVec()
+    local x1,y1 = pos.x,pos.y
+    local x2,y2 = pos.x + size.x,pos.y + size.y
+    local mid = (x1 + x2) / 2
+    local dl = ImGui.GetWindowDrawList()
+    local gold = TomeColor(0.78,0.58,0.22,0.95)
+    local goldDim = TomeColor(0.55,0.40,0.18,0.80)
+
+    -- leather cover with stitched gold trim
+    dl:AddRect(ImVec2(x1 + 3,y1 + 3),ImVec2(x2 - 3,y2 - 3),gold,6,0,2)
+    dl:AddRect(ImVec2(x1 + 8,y1 + 8),ImVec2(x2 - 8,y2 - 8),goldDim,4,0,1)
+
+    -- stacked page edges peeking out under the pages
+    local px1,py1,px2,py2 = x1 + 16,y1 + 30,x2 - 16,y2 - 16
+    for i = 3,1,-1 do
+        dl:AddRectFilled(ImVec2(px1 - i,py1 + i),ImVec2(px2 + i,py2 + i),
+            TomeColor(0.62 - i * 0.05,0.52 - i * 0.05,0.34 - i * 0.04,1),3)
+    end
+
+    -- left and right pages with a gutter at the spine
+    local pageCol = TomeColor(0.20,0.13,0.07,1)
+    dl:AddRectFilled(ImVec2(px1,py1),ImVec2(mid - 3,py2),pageCol,3)
+    dl:AddRectFilled(ImVec2(mid + 3,py1),ImVec2(px2,py2),pageCol,3)
+
+    -- spine shadow fading into each page
+    for i = 1,14 do
+        local a = 0.30 * (1 - i / 15)
+        dl:AddRectFilled(ImVec2(mid - 3 - i * 2,py1),ImVec2(mid - 3 - (i - 1) * 2,py2),TomeColor(0,0,0,a))
+        dl:AddRectFilled(ImVec2(mid + 3 + (i - 1) * 2,py1),ImVec2(mid + 3 + i * 2,py2),TomeColor(0,0,0,a))
+    end
+    dl:AddRectFilled(ImVec2(mid - 3,py1 - 6),ImVec2(mid + 3,py2 + 6),TomeColor(0.10,0.05,0.03,1))
+    dl:AddLine(ImVec2(mid,py1 - 6),ImVec2(mid,py2 + 6),goldDim,1)
+
+    -- gold flourishes: corner diamonds and spine caps
+    local function Diamond(cx,cy,r)
+        dl:AddQuadFilled(ImVec2(cx,cy - r),ImVec2(cx + r,cy),ImVec2(cx,cy + r),ImVec2(cx - r,cy),gold)
+    end
+    Diamond(x1 + 8,y1 + 8,5)
+    Diamond(x2 - 8,y1 + 8,5)
+    Diamond(x1 + 8,y2 - 8,5)
+    Diamond(x2 - 8,y2 - 8,5)
+    Diamond(mid,py1 - 6,5)
+    Diamond(mid,py2 + 6,5)
+end
+
 local GRIMOIRE_WIDTH = 1100
 local GRIMOIRE_HEIGHT = 780
 local GRIMOIRE_ASPECT = GRIMOIRE_WIDTH / GRIMOIRE_HEIGHT
@@ -4080,10 +4132,12 @@ local function DrawUI()
     ImGui.PushStyleVar(ImGuiStyleVar.ChildRounding,4)
     ImGui.PushStyleVar(ImGuiStyleVar.WindowBorderSize,2)
     ImGui.PushStyleVar(ImGuiStyleVar.ItemSpacing,10,8)
+    ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding,26,14)
     local draw = false
     State.showWindow,draw = ImGui.Begin('EQMight Grimoire',State.showWindow)
 
     if draw then
+        pcall(DrawTomeFrame)
         RefreshRing()
         ImGui.TextColored(0.92,0.70,0.25,1,'~ EQMIGHT GRIMOIRE ~')
         ImGui.SameLine()
@@ -4141,7 +4195,7 @@ local function DrawUI()
     end
 
     ImGui.End()
-    ImGui.PopStyleVar(5)
+    ImGui.PopStyleVar(6)
     if pushedColors > 0 then
         ImGui.PopStyleColor(pushedColors)
     end
