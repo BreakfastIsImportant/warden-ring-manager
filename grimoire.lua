@@ -317,6 +317,15 @@ local State = {
     autoRunning=false,
     autoSay='',
     autoGive='',
+    -- Travel AAs/items. Gate goes to the bind point, which is ASSUMED to be Surefall Glade.
+    travelHubs={
+        {key='gate',label='Gate AA',aa='Gate',zone='Surefall Glade',short='qrg',enabled=true,mode='aa',item='',
+            note='ASSUMES your bind point is Surefall Glade. Turn this off if you are bound elsewhere.'},
+        {key='freeport',label='Freeport Temple AA',aa='Freeport Temple',zone='Temple of Marr (Freeport)',short='freeporttemple',enabled=true,mode='aa',item='',
+            note='Always takes you to the Temple of Marr in Freeport.'},
+        {key='origin',label='Origin AA',aa='Origin',zone='',short='',enabled=false,mode='aa',item='',editable=true,
+            note='Takes you to your starting city. Enter that zone (name or short name) to enable it.'},
+    },
     navBack={},
     navForward={},
     accessDone={},
@@ -441,7 +450,21 @@ local function LoadProgress()
                 end
             else
                 local autoTrackValue = line:match('^L|([01])$')
-                if autoTrackValue then
+                local hubKey,hubEnabled,hubMode,hubShort,hubItem =
+                    line:match('^H|(%w+)|([01])|(%w+)|(%x*)|(%x*)$')
+                if hubKey then
+                    for _,hub in ipairs(State.travelHubs) do
+                        if hub.key == hubKey then
+                            hub.enabled = hubEnabled == '1'
+                            hub.mode = hubMode
+                            hub.item = DecodeText(hubItem)
+                            if hub.editable then
+                                hub.short = DecodeText(hubShort)
+                                hub.zone = hub.short
+                            end
+                        end
+                    end
+                elseif autoTrackValue then
                     State.autoTrackProgressLogs = autoTrackValue == '1'
                 else
                     local currencyHex = line:match('^C|([%x]+)$')
@@ -528,6 +551,11 @@ local function SaveProgress()
                 return false,'Could not write saved currency list: '..tostring(writeError)
             end
         end
+    end
+
+    for _,hub in ipairs(State.travelHubs) do
+        file:write(string.format('H|%s|%d|%s|%s|%s\n',
+            hub.key,hub.enabled and 1 or 0,hub.mode,EncodeText(hub.short or ''),EncodeText(hub.item or '')))
     end
 
     local autoTrackSaved,autoTrackError = file:write(
@@ -942,6 +970,29 @@ local function OnNPCSays(line,speaker,text)
 end
 mq.event('grimoire_npc_says',"#1# says, '#2#'",OnNPCSays)
 
+-- Fast-travel through AAs or clickable items; returns true if the hub was activated.
+local function ActivateTravelHub(hub)
+    if hub.mode == 'item' then
+        if (hub.item or '') == '' then
+            return false,'no item chosen'
+        end
+        if not mq.TLO.FindItem('='..hub.item)() then
+            return false,hub.item..' is not in your inventory'
+        end
+        mq.cmdf('/useitem "%s"',hub.item)
+        return true
+    end
+    local aa = mq.TLO.Me.AltAbility(hub.aa)
+    if not aa() then
+        return false,'you do not have the '..hub.aa..' AA'
+    end
+    if not mq.TLO.Me.AltAbilityReady(hub.aa)() then
+        return false,hub.aa..' is on cooldown'
+    end
+    mq.cmdf('/alt activate %d',aa.ID())
+    return true
+end
+
 local function RunAutoRequest(request)
     local function status(text)
         State.autoStatus = text
@@ -966,6 +1017,28 @@ local function RunAutoRequest(request)
     end
     if not targetShort and not mq.TLO.Spawn('npc '..request.npc:gsub(' ','_'))() then
         return status('Could not work out which zone '..request.npc..' is in ('..table.concat(request.locations,', ')..').')
+    end
+
+    if targetShort and targetShort ~= currentShort then
+        for _,hub in ipairs(State.travelHubs) do
+            local hubShort = (hub.short or '') ~= '' and (ResolveZoneShortName(hub.short) or hub.short:lower())
+            if hub.enabled and hubShort == targetShort then
+                local activated,reason = ActivateTravelHub(hub)
+                if activated then
+                    status('Using '..(hub.mode == 'item' and hub.item or hub.aa)..' to reach '..targetShort..'...')
+                    mq.delay(1500)
+                    if AutoWait(function()
+                        return tostring(mq.TLO.Zone.ShortName() or ''):lower() == targetShort
+                    end,60000) then
+                        currentShort = targetShort
+                        mq.delay(3000)
+                    end
+                else
+                    status('Skipping '..hub.label..': '..reason..'.')
+                end
+                break
+            end
+        end
     end
 
     if targetShort and targetShort ~= currentShort then
@@ -3670,6 +3743,61 @@ local function DrawGuideSection(sectionID)
     ImGui.TextDisabled('Source: https://www.eqmight.com')
 end
 
+local function DrawTravelHubs()
+    if not ImGui.CollapsingHeader('Travel methods (AA / item clicks)##travel_hubs') then
+        return
+    end
+    ImGui.TextWrapped('Auto NPC uses these to reach their zone, falling back to /travelto. Hold an item on your cursor and click "Use cursor item" to turn it into a travel click, like a hotbutton.')
+    for index,hub in ipairs(State.travelHubs) do
+        local changed
+        hub.enabled,changed = ImGui.Checkbox(hub.label..'##hub_on_'..index,hub.enabled)
+        if changed then State.progressPendingSave = true end
+        ImGui.SameLine()
+        ImGui.TextColored(ProgressColors.zone[1],ProgressColors.zone[2],ProgressColors.zone[3],1,
+            '-> '..((hub.zone or '') ~= '' and hub.zone or '(not set)'))
+        ImGui.TextColored(1,0.75,0.3,1,hub.note)
+        if hub.editable then
+            ImGui.PushItemWidth(180)
+            local value,zoneChanged = ImGui.InputText('Starting city zone##hub_zone_'..index,hub.short or '',60)
+            ImGui.PopItemWidth()
+            if zoneChanged then
+                hub.short,hub.zone = value,value
+                hub.enabled = value ~= ''
+                State.progressPendingSave = true
+            end
+        end
+        if ImGui.RadioButton('AA: '..hub.aa..'##hub_aa_'..index,hub.mode == 'aa') then
+            hub.mode = 'aa'
+            State.progressPendingSave = true
+        end
+        ImGui.SameLine()
+        if ImGui.RadioButton('Item click##hub_item_'..index,hub.mode == 'item') then
+            hub.mode = 'item'
+            State.progressPendingSave = true
+        end
+        if hub.mode == 'item' then
+            ImGui.PushItemWidth(220)
+            local value,itemChanged = ImGui.InputText('Item name##hub_itemname_'..index,hub.item or '',80)
+            ImGui.PopItemWidth()
+            if itemChanged then
+                hub.item = value
+                State.progressPendingSave = true
+            end
+            ImGui.SameLine()
+            if ImGui.SmallButton('Use cursor item##hub_cursor_'..index) then
+                if (mq.TLO.Cursor.ID() or 0) > 0 then
+                    hub.item = mq.TLO.Cursor.Name() or ''
+                    mq.cmd('/autoinventory')
+                    State.progressPendingSave = true
+                else
+                    State.autoStatus = 'Pick up the item with your mouse first, then click "Use cursor item".'
+                end
+            end
+        end
+        ImGui.Separator()
+    end
+end
+
 local function DrawProgressionUI()
     local done,total = OverallStats()
     local fraction = total > 0 and done / total or 0
@@ -3712,6 +3840,7 @@ local function DrawProgressionUI()
             end
         end
     end
+    DrawTravelHubs()
     ImGui.Separator()
 
     ImGui.BeginChild('##prog_nav',250,0,true)
