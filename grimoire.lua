@@ -335,6 +335,11 @@ local State = {
     logLastPoll=0,
     logStatus='Log tracking is off.',
     allCharacters={},
+    updateAllChars=false,
+    promptAllChars=true,
+    charSkip={},
+    pendingManual=nil,
+    openAllCharsPopup=false,
     selectedProgressPage='basics',
     pearlTrackerReady=false,
     pearlTrackerError='',
@@ -488,6 +493,15 @@ local function LoadProgress()
         if accessID then
             State.accessDone[accessID] = true
         end
+        local updateAll,promptAll = line:match('^U|([01])|([01])$')
+        if updateAll then
+            State.updateAllChars = updateAll == '1'
+            State.promptAllChars = promptAll == '1'
+        end
+        local skipKey = line:match('^V|([%w_%-]+)$')
+        if skipKey then
+            State.charSkip[skipKey] = true
+        end
     end
 
     file:close()
@@ -556,6 +570,13 @@ local function SaveProgress()
     for _,hub in ipairs(State.travelHubs) do
         file:write(string.format('H|%s|%d|%s|%s|%s\n',
             hub.key,hub.enabled and 1 or 0,hub.mode,EncodeText(hub.short or ''),EncodeText(hub.item or '')))
+    end
+
+    file:write(string.format('U|%d|%d\n',State.updateAllChars and 1 or 0,State.promptAllChars and 1 or 0))
+    for skipKey,skipped in pairs(State.charSkip) do
+        if skipped then
+            file:write('V|'..skipKey..'\n')
+        end
     end
 
     local autoTrackSaved,autoTrackError = file:write(
@@ -2413,6 +2434,72 @@ local function SaveProgressChanges()
     return saved
 end
 
+local function CurrentCharKey()
+    local characterName = mq.TLO.Me.CleanName() or mq.TLO.Me.Name() or 'Character'
+    local serverName = mq.TLO.EverQuest.Server() or 'Server'
+    return serverName:gsub('[^%w_-]','_')..'_'..characterName:gsub('[^%w_-]','_')
+end
+
+-- Writes manual changes ({line=, done=}) into the other characters' save files.
+local function PropagateToOthers(changes)
+    local ok,lfs = pcall(require,'lfs')
+    if not ok then
+        return 0
+    end
+    local ownKey = CurrentCharKey()
+    local touched = 0
+    for entry in lfs.dir(mq.configDir) do
+        local server,character = entry:match('^WardenCompanionProgress_(.-)_([^_]+)%.txt$')
+        local key = server and (server..'_'..character)
+        if key and key ~= ownKey and not State.charSkip[key] then
+            local path = mq.configDir..'\\'..entry
+            local file = io.open(path,'r')
+            if file then
+                local lines,present = {},{}
+                for line in file:lines() do
+                    table.insert(lines,line)
+                    present[line] = true
+                end
+                file:close()
+                for _,change in ipairs(changes) do
+                    if change.done and not present[change.line] then
+                        table.insert(lines,change.line)
+                        present[change.line] = true
+                    elseif not change.done and present[change.line] then
+                        present[change.line] = nil
+                    end
+                end
+                local out = io.open(path,'w')
+                if out then
+                    for _,line in ipairs(lines) do
+                        if present[line] or not line:match('^[TF]|') then
+                            out:write(line..'\n')
+                        end
+                    end
+                    out:close()
+                    touched = touched + 1
+                end
+            end
+        end
+    end
+    State.allCharactersScanned = false
+    return touched
+end
+
+-- Called after a manual checklist edit; asks once before touching other characters.
+local function ManualUpdate(changes)
+    if #changes == 0 then
+        return
+    end
+    if State.promptAllChars then
+        State.pendingManual = changes
+        State.openAllCharsPopup = true
+    elseif State.updateAllChars then
+        local touched = PropagateToOthers(changes)
+        State.progressStatus = string.format('Manual update also applied to %d other character(s).',touched)
+    end
+end
+
 local function GetProgressDisposition(text)
     local lowerText = text:lower()
     local incompleteMarkers = {
@@ -2651,6 +2738,33 @@ local function ProcessProgressLogLine(line,name)
     return 0,tier
 end
 
+-- "category:tier" -> access flag groups that gate that tier's content.
+local TierAccessFlags = {
+    ['1:7']={'pop'},
+    ['1:9']={'warden'},
+    ['1:10']={'stillmoon'},
+    ['2:7']={'pop'},
+    ['2:8']={'god'},
+}
+
+-- Completing a tier implies its related access-flag chains are complete.
+local function CompleteTierPrerequisites(categoryIndex,tier)
+    local changes = 0
+    for _,groupID in ipairs(TierAccessFlags[categoryIndex..':'..tier.tier] or {}) do
+        for _,group in ipairs(AccessFlags) do
+            if group.id == groupID then
+                for _,step in ipairs(group.steps) do
+                    if not State.accessDone[step.id] then
+                        State.accessDone[step.id] = true
+                        changes = changes + 1
+                    end
+                end
+            end
+        end
+    end
+    return changes
+end
+
 -- Finishing a tier implies every lower tier on that path is finished.
 local function ApplyTierCompletion()
     local changes = 0
@@ -2659,6 +2773,7 @@ local function ApplyTierCompletion()
         if maxTier then
             for tierIndex,tier in ipairs(InstanceCategories[categoryIndex].tiers) do
                 if tier.tier <= maxTier then
+                    changes = changes + CompleteTierPrerequisites(categoryIndex,tier)
                     for targetIndex=1,CountTargets(tier) do
                         local key = ProgressKey(categoryIndex,tierIndex,targetIndex)
                         if not State.progressDone[key] then
@@ -2958,15 +3073,6 @@ local function AccessStats(group)
     return done,#group.steps
 end
 
--- "category:tier" -> access flag groups that gate that tier's content.
-local TierAccessFlags = {
-    ['1:7']={'pop'},
-    ['1:9']={'warden'},
-    ['1:10']={'stillmoon'},
-    ['2:7']={'pop'},
-    ['2:8']={'god'},
-}
-
 local function TierStats(categoryIndex,tierIndex)
     local tier = InstanceCategories[categoryIndex].tiers[tierIndex]
     local total = CountTargets(tier)
@@ -3256,10 +3362,13 @@ end
 
 local function SetTierDone(categoryIndex,tierIndex,done)
     local tier = InstanceCategories[categoryIndex].tiers[tierIndex]
+    local changes = {}
     for targetIndex=1,CountTargets(tier) do
         State.progressDone[ProgressKey(categoryIndex,tierIndex,targetIndex)] = done and true or nil
+        table.insert(changes,{line=string.format('T|%d|%d|%d',categoryIndex,tierIndex,targetIndex),done=done})
     end
     SaveProgressChanges()
+    ManualUpdate(changes)
 end
 
 local function DrawTierDetail(categoryIndex,tierIndex)
@@ -3321,6 +3430,7 @@ local function DrawTierDetail(categoryIndex,tierIndex)
         if changed then
             State.progressDone[key] = updated and true or nil
             SaveProgressChanges()
+            ManualUpdate({{line=string.format('T|%d|%d|%d',categoryIndex,tierIndex,targetIndex),done=updated}})
         end
     end
 end
@@ -3396,17 +3506,23 @@ local function DrawAccessUI(group)
         string.format('Progress: %d/%d steps complete',done,total))
     ImGui.ProgressBar(total > 0 and done / total or 0,-1,0,string.format('%d / %d',done,total))
     if ImGui.SmallButton('Mark all##access_all') then
+        local changes = {}
         for _,step in ipairs(group.steps) do
             State.accessDone[step.id] = true
+            table.insert(changes,{line='F|'..step.id,done=true})
         end
         SaveProgressChanges()
+        ManualUpdate(changes)
     end
     ImGui.SameLine()
     if ImGui.SmallButton('Clear##access_clear') then
+        local changes = {}
         for _,step in ipairs(group.steps) do
             State.accessDone[step.id] = nil
+            table.insert(changes,{line='F|'..step.id,done=false})
         end
         SaveProgressChanges()
+        ManualUpdate(changes)
     end
 
     ImGui.Spacing()
@@ -3416,6 +3532,7 @@ local function DrawAccessUI(group)
         if changed then
             State.accessDone[step.id] = updated and true or nil
             SaveProgressChanges()
+            ManualUpdate({{line='F|'..step.id,done=updated}})
         end
         ImGui.Indent()
         DrawRichText(step.note,ProgressColors.grey)
@@ -3425,8 +3542,55 @@ local function DrawAccessUI(group)
     end
 end
 
+local function DrawCharacterSettings()
+    local updated,changed = ImGui.Checkbox('Manual updates also apply to all characters on the All Characters screen',State.updateAllChars)
+    if changed then
+        State.updateAllChars = updated
+        SaveProgressChanges()
+    end
+    updated,changed = ImGui.Checkbox('Ask before the first manual update',State.promptAllChars)
+    if changed then
+        State.promptAllChars = updated
+        SaveProgressChanges()
+    end
+end
+
+local function DrawAllCharsPopup()
+    if State.openAllCharsPopup then
+        ImGui.OpenPopup('Update all characters?')
+        State.openAllCharsPopup = false
+    end
+    if ImGui.BeginPopupModal('Update all characters?',nil,ImGuiWindowFlags.AlwaysAutoResize) then
+        ImGui.Text('Apply manual updates to every character on the All Characters screen?')
+        ImGui.TextDisabled('Characters can be excluded individually there. You can change this under')
+        ImGui.TextDisabled('Overview > Characters.')
+        local function Answer(all)
+            State.updateAllChars = all
+            State.promptAllChars = false
+            if all and State.pendingManual then
+                local touched = PropagateToOthers(State.pendingManual)
+                State.progressStatus = string.format('Manual update also applied to %d other character(s).',touched)
+            end
+            State.pendingManual = nil
+            SaveProgressChanges()
+            ImGui.CloseCurrentPopup()
+        end
+        if ImGui.Button('Yes, update all') then
+            Answer(true)
+        end
+        ImGui.SameLine()
+        if ImGui.Button('Only this character') then
+            Answer(false)
+        end
+        ImGui.EndPopup()
+    end
+end
+
 local function DrawOverviewUI()
     DrawHeading('Progress Overview')
+    if ImGui.CollapsingHeader('Characters##overview_chars') then
+        DrawCharacterSettings()
+    end
     ImGui.TextColored(ProgressColors.npc[1],ProgressColors.npc[2],ProgressColors.npc[3],1,'NPC names')
     ImGui.SameLine()
     ImGui.TextColored(ProgressColors.zone[1],ProgressColors.zone[2],ProgressColors.zone[3],1,'Zone names')
@@ -3501,7 +3665,23 @@ local function DrawAllCharactersUI()
     end
     ImGui.SameLine()
     ImGui.TextDisabled('Every character that has run the Grimoire on this PC.')
+    DrawCharacterSettings()
+    local ownKey = CurrentCharKey()
     for _,row in ipairs(State.allCharacters) do
+        local key = row.server..'_'..row.character
+        if key == ownKey then
+            ImGui.TextDisabled('(this)')
+        else
+            local updated,changed = ImGui.Checkbox('##skip_'..key,not State.charSkip[key])
+            if changed then
+                State.charSkip[key] = (not updated) or nil
+                SaveProgressChanges()
+            end
+            if ImGui.IsItemHovered() then
+                ImGui.SetTooltip('Include in manual updates')
+            end
+        end
+        ImGui.SameLine()
         ImGui.Text(string.format('%s (%s)',row.character,row.server))
         ImGui.ProgressBar(row.total > 0 and row.done / row.total or 0,-1,0,
             string.format('%d / %d',row.done,row.total))
@@ -3926,6 +4106,7 @@ local function DrawProgressionUI()
     end
     ImGui.Spacing()
     ImGui.TextDisabled(State.progressStatus)
+    DrawAllCharsPopup()
     ImGui.EndChild()
 end
 
