@@ -28,7 +28,7 @@ The undocked Grimoire window keeps its 1100:780 aspect ratio when resized. Resiz
 
 ## 🧭 About
 
-The tracker is EQ Might only: manual checkboxes always work, and the **Track progress from EverQuest logs** toggle (needs `/log on`) imports your character's `Logs\eqlog_<Name>_<Server>.txt` history and then watches it for first-time defeats and tier-completion announcements. An **All Characters** sub-tab shows saved progress for every character that has run the Grimoire on the PC; the Pearls tab shows every character running the script via actors. Checklist state, side flags, and custom currencies save per character.
+The tracker is EQ Might only: manual checkboxes always work, and the **Track progress from EverQuest logs** toggle (needs `/log on`) imports your character's `Logs\eqlog_<Name>_<Server>.txt` history and then watches it for first-time defeats and tier-completion announcements. The highest tier completion found in the log also marks every lower tier on that path (announcements containing "Solo" count as Solo/Duo, all others as Group). The Progression tab uses a left navigation list (Overview, each tier, Side Flags, All Characters, Guide) with a detail pane on the right. The **All Characters** page shows saved progress for every character that has run the Grimoire on the PC; the Pearls tab shows every character running the script via actors. Checklist state, side flags, and custom currencies save per character.
 
 The tracker does not read the NPC popup. A one-shot dialogue probe caused a client crash in MacroQuest, so direct popup reads should not be used until the underlying issue is diagnosed.
 
