@@ -4097,8 +4097,13 @@ local function DrawLauncher()
         if ImGui.IsItemHovered() then
             ImGui.SetTooltip(State.showWindow and 'Hide EQMight Grimoire' or 'Open EQMight Grimoire')
             if ImGui.IsMouseReleased(0) then
-                local okDrag,dragX,dragY = pcall(ImGui.GetMouseDragDelta,0)
-                if not okDrag or (math.abs(dragX or 0) + math.abs(dragY or 0)) < 4 then
+                local okDrag,drag = pcall(ImGui.GetMouseDragDelta,0)
+                local dragDist = 0
+                if okDrag and drag then
+                    local dx = type(drag) == 'number' and drag or drag.x
+                    dragDist = math.abs(tonumber(dx) or 0)
+                end
+                if dragDist < 4 then
                     State.showWindow = not State.showWindow
                 end
             end
