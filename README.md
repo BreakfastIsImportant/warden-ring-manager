@@ -4,6 +4,8 @@
 
 Manage Warden ring upgrades and augment loadouts, plan Might and dungeon targets, track progression and side flags, and review alternate-currency balances from one MacroQuest window.
 
+The undocked Grimoire window keeps its 1100:780 aspect ratio when resized. Resizing changes the window area, not the size of text or controls; docked windows follow the dock layout instead.
+
 > **Built for MacroQuest Lua** · Ring swaps · Saved aug loadouts · Might and dungeon planning
 
 ## ✨ Features
@@ -19,14 +21,16 @@ Manage Warden ring upgrades and augment loadouts, plan Might and dungeon targets
 | 🔎 | **Compact augment browser** | Groups augments by type, filters to the selected slot, and shows icons and key stats. Hover for more stats; right-click to link an item in game. |
 | 📊 | **Might calculator** | Compare your current and projected Might, including party estimates and the selected ring's contribution. |
 | 🏰 | **Instance planner** | Browse Solo/Duo, Group, and Raid progression suggestions, difficulty estimates, and suggested Might. |
-| ✅ | **Progression tracker** | A Checklist of Solo/Duo and Group instance targets plus custom side flags, and a Guide drawn from eqmight.com (how Might works, progression path, key NPCs, currency flow, Warden rings). Optional chat tracking of Lady Maria Luisa / Sir Daniel replies. |
+| ✅ | **Progression tracker** | A Checklist of Solo/Duo and Group instance targets plus custom side flags, and a Guide drawn from eqmight.com (how Might works, progression path, key NPCs, currency flow, Warden rings). Optional log tracking of first-time defeat announcements. |
 | 💰 | **Currency** | Live balances for Token of Might, Token of Epic Might, Token of Legendary Might, plus Invaluable Coin counts in bags. Add other exact names as needed. |
 | ⚪ | **Pearl Tracker** | View local and connected-toon pearl progress inside the companion window. |
 | 🪟 | **One window** | Access the ring and progression-planning tools from one ImGui window. |
 
 ## 🧭 About
 
-The tracker is EQ Might only: manual checkboxes always work, and the optional **Track NPC replies from chat** setting (off by default) parses new chat lines from Lady Maria Luisa and Sir Daniel; it does not read historical log files. Checklist state, side flags, and custom currencies save per character.
+The tracker is EQ Might only: manual checkboxes always work, and the **Track progress from EverQuest logs** toggle (needs `/log on`) imports your character's `Logs\eqlog_<Name>_<Server>.txt` history and then watches it for first-time defeats and tier-completion announcements. An **All Characters** sub-tab shows saved progress for every character that has run the Grimoire on the PC; the Pearls tab shows every character running the script via actors. Checklist state, side flags, and custom currencies save per character.
+
+The tracker does not read the NPC popup. A one-shot dialogue probe caused a client crash in MacroQuest, so direct popup reads should not be used until the underlying issue is diagnosed.
 
 ## 🚀 Install
 

@@ -221,7 +221,13 @@ local State = {
     progressPendingSave=false,
     progressPendingChanges=0,
     autoTrackProgressLogs=false,
-    progressEventsPending=nil,
+    logTiers={},
+    logChanges=0,
+    logOffset=0,
+    logCarry='',
+    logLastPoll=0,
+    logStatus='Log tracking is off.',
+    allCharacters={},
     selectedProgressPage='basics',
     pearlTrackerReady=false,
     pearlTrackerError='',
@@ -2238,28 +2244,171 @@ local function TrackKilledTarget(mobName)
     return changes
 end
 
-local function HandleKilledMob(mobName)
-    if not State.autoTrackProgressLogs or type(mobName) ~= 'string' then
+local function EscapePattern(text)
+    return (text:gsub('[%^%$%(%)%%%.%[%]%*%+%-%?]','%%%0'))
+end
+
+local function GetLogCharacterName()
+    return mq.TLO.Me.CleanName() or mq.TLO.Me.Name() or ''
+end
+
+local function GetEQLogPath()
+    local root = mq.TLO.EverQuest.Path() or ''
+    if root == '' then
+        return nil
+    end
+    root = root:gsub('[\\/]+$','')
+    local server = mq.TLO.EverQuest.Server() or ''
+    return string.format(
+        '%s\\Logs\\eqlog_%s_%s.txt',
+        root,
+        GetLogCharacterName(),
+        server
+    )
+end
+
+local function ProcessProgressLogLine(line,name)
+    local mob = line:match('%] '..name..' has defeated (.-) for the first time%.')
+        or line:match('%] (.-) %(%a+%) was defeated by '..name..'%.')
+    if mob then
+        return TrackKilledTarget(mob),nil
+    end
+
+    local tier = line:match('%] '..name..' has completed (.-) progression!')
+    if tier then
+        State.logTiers[tier] = true
+    end
+    return 0,tier
+end
+
+local function ResetProgressLog()
+    if State.logFile then
+        State.logFile:close()
+    end
+    State.logFile = nil
+    State.logOffset = 0
+    State.logCarry = ''
+    State.logImporting = false
+    State.logLastPoll = 0
+    State.logPath = nil
+end
+
+local function StartProgressLog()
+    ResetProgressLog()
+    State.logTiers = {}
+    State.logChanges = 0
+    local path = GetEQLogPath()
+    if not path then
+        State.logStatus = 'Could not determine the EverQuest folder.'
+        return
+    end
+    local file = io.open(path,'rb')
+    if not file then
+        State.logStatus = 'No log file found at '..path..' (is /log on?).'
+        return
+    end
+    State.logPath = path
+    State.logFile = file
+    State.logImporting = true
+    State.logStatus = 'Importing log history...'
+end
+
+-- Reads a bounded amount per call so the main loop never stalls.
+local function PumpProgressLog()
+    local file = State.logFile
+    if not file then
         return
     end
 
-    local ok,changes = pcall(TrackKilledTarget,mobName)
-    if not ok then
-        State.progressStatus = 'Could not track kill progress: '..tostring(changes)
-        return
+    local name = EscapePattern(GetLogCharacterName())
+    local changes = 0
+    local chunks = 0
+    while chunks < 4 do
+        file:seek('set',State.logOffset)
+        local data = file:read(1048576)
+        if not data or #data == 0 then
+            break
+        end
+        State.logOffset = State.logOffset + #data
+        data = State.logCarry..data
+        local lastNewline = data:match('^.*()\n')
+        if lastNewline then
+            State.logCarry = data:sub(lastNewline + 1)
+            data = data:sub(1,lastNewline)
+            for line in data:gmatch('[^\n]+') do
+                if line:find('first time',1,true)
+                    or line:find('progression!',1,true)
+                    or line:find('was defeated by',1,true)
+                then
+                    local ok,added = pcall(ProcessProgressLogLine,line,name)
+                    if ok and added then
+                        changes = changes + added
+                    end
+                end
+            end
+        else
+            State.logCarry = data
+        end
+        chunks = chunks + 1
+    end
+
+    if chunks < 4 and State.logImporting then
+        State.logImporting = false
+        State.logStatus = 'Log history imported; watching for new announcements.'
     end
 
     if changes > 0 then
+        State.logChanges = State.logChanges + changes
         State.progressPendingSave = true
         State.progressPendingChanges = State.progressPendingChanges + changes
-        State.progressStatus = string.format(
-            'Tracking %s from the kill message.',
-            mobName
-        )
     end
 end
 
-local RegisterProgressEvents
+local function CountLogTiers()
+    local count = 0
+    for _ in pairs(State.logTiers) do
+        count = count + 1
+    end
+    return count
+end
+
+-- Reads every saved character's progress file so one screen shows them all.
+local function ScanAllCharacterProgress()
+    local rows = {}
+    local ok,lfs = pcall(require,'lfs')
+    if not ok then
+        return rows
+    end
+    local total = 0
+    for categoryIndex=1,2 do
+        for _,tier in ipairs(InstanceCategories[categoryIndex].tiers) do
+            total = total + CountTargets(tier)
+        end
+    end
+    for entry in lfs.dir(mq.configDir) do
+        local server,character = entry:match('^WardenCompanionProgress_(.-)_([^_]+)%.txt$')
+        if server then
+            local file = io.open(mq.configDir..'\\'..entry,'r')
+            if file then
+                local done = 0
+                for line in file:lines() do
+                    if line:match('^T|%d+|%d+|%d+$') then
+                        done = done + 1
+                    end
+                end
+                file:close()
+                table.insert(rows,{
+                    server=server,
+                    character=character,
+                    done=done,
+                    total=total,
+                })
+            end
+        end
+    end
+    table.sort(rows,function(a,b) return a.character:lower() < b.character:lower() end)
+    return rows
+end
 
 local function DrawMightProgressUI()
     local totalTargets = 0
@@ -2500,12 +2649,17 @@ end
 
 local function SetProgressLogTracking(enabled)
     State.autoTrackProgressLogs = enabled
-    State.progressEventsPending = enabled
+    if enabled then
+        StartProgressLog()
+    else
+        ResetProgressLog()
+        State.logStatus = 'Log tracking is off.'
+    end
 
     if SaveProgressChanges() then
         State.progressStatus = enabled
-            and 'Automatic chat/log tracking enabled.'
-            or 'Automatic tracking disabled; manual checklist remains available.'
+            and 'Log tracking enabled.'
+            or 'Log tracking disabled; manual checklist remains available.'
     end
 end
 
@@ -2537,18 +2691,48 @@ end
 
 local function DrawProgressionUI()
     local autoTrack,autoTrackChanged = ImGui.Checkbox(
-        'Track NPC replies from chat (optional)##progress_auto',
+        'Track progress from EverQuest logs (/log on)##progress_auto',
         State.autoTrackProgressLogs
     )
     if autoTrackChanged then
         SetProgressLogTracking(autoTrack)
     end
     ImGui.SameLine()
-    ImGui.TextDisabled('Hail Lady Maria Luisa / Sir Daniel; manual checkboxes always work.')
+    ImGui.TextDisabled(State.logStatus)
+    if State.autoTrackProgressLogs then
+        ImGui.TextDisabled(string.format(
+            'Log updates this session: %d | tier completions announced: %d',
+            State.logChanges,
+            CountLogTiers()
+        ))
+        if CountLogTiers() > 0 then
+            local names = {}
+            for tierName in pairs(State.logTiers) do
+                table.insert(names,tierName)
+            end
+            table.sort(names)
+            ImGui.TextWrapped('Completed: '..table.concat(names,', '))
+        end
+    end
 
     if ImGui.BeginTabBar('##progression_views') then
         if ImGui.BeginTabItem('Checklist') then
             DrawMightProgressUI()
+            ImGui.EndTabItem()
+        end
+        if ImGui.BeginTabItem('All Characters') then
+            if ImGui.Button('Refresh##all_chars') or #State.allCharacters == 0 and not State.allCharactersScanned then
+                State.allCharactersScanned = true
+                local ok,rows = pcall(ScanAllCharacterProgress)
+                State.allCharacters = ok and rows or {}
+            end
+            ImGui.SameLine()
+            ImGui.TextDisabled('Every character that has run the Grimoire on this PC.')
+            for _,row in ipairs(State.allCharacters) do
+                ImGui.Text(string.format('%s (%s)',row.character,row.server))
+                ImGui.ProgressBar(row.total > 0 and row.done / row.total or 0,-1,0,
+                    string.format('%d / %d',row.done,row.total))
+            end
             ImGui.EndTabItem()
         end
         if ImGui.BeginTabItem('Guide') then
@@ -2985,8 +3169,27 @@ local function PushGrimoireTheme()
     return pushed
 end
 
+local GRIMOIRE_WIDTH = 1100
+local GRIMOIRE_HEIGHT = 780
+local GRIMOIRE_ASPECT = GRIMOIRE_WIDTH / GRIMOIRE_HEIGHT
+
+local function ConstrainGrimoireSize(_,currentSize,desiredSize)
+    local widthChange = math.abs(desiredSize.x - currentSize.x) / GRIMOIRE_WIDTH
+    local heightChange = math.abs(desiredSize.y - currentSize.y) / GRIMOIRE_HEIGHT
+    local width = heightChange > widthChange
+        and desiredSize.y * GRIMOIRE_ASPECT
+        or desiredSize.x
+    width = math.max(width,220)
+    return ImVec2(width,width / GRIMOIRE_ASPECT)
+end
+
 local function DrawUI()
-    ImGui.SetNextWindowSize(1100,780,ImGuiCond.FirstUseEver)
+    ImGui.SetNextWindowSize(GRIMOIRE_WIDTH,GRIMOIRE_HEIGHT,ImGuiCond.FirstUseEver)
+    ImGui.SetNextWindowSizeConstraints(
+        ImVec2(220,156),
+        ImVec2(1000000,1000000),
+        ConstrainGrimoireSize
+    )
     local pushedColors = PushGrimoireTheme()
     ImGui.PushStyleVar(ImGuiStyleVar.WindowRounding,6)
     ImGui.PushStyleVar(ImGuiStyleVar.FrameRounding,4)
@@ -3060,38 +3263,6 @@ local function DrawUI()
     end
 end
 
-local function HandleProgressLogAction(action,targetText)
-    if action == 'kill' and type(targetText) == 'string' then
-        HandleKilledMob(targetText)
-    end
-end
-
-RegisterProgressEvents = function()
-    mq.event(
-        'project_might_progress_kill',
-        '#*#You have slain #1#.#*#',
-        function(_,mobName)
-            if State.autoTrackProgressLogs then
-                HandleProgressLogAction('kill',mobName)
-            end
-        end
-    )
-    mq.event(
-        'warden_companion_solo_progress',
-        '#*#Lady Maria Luisa#*#',
-        function(line)
-            HandleProgressReport('solo',line)
-        end
-    )
-    mq.event(
-        'warden_companion_group_progress',
-        '#*#Sir Daniel#*#',
-        function(line)
-            HandleProgressReport('group',line)
-        end
-    )
-end
-
 for _,currency in ipairs(DefaultCurrencies) do
     table.insert(State.altCurrencies,{
         name=currency.name,
@@ -3109,7 +3280,7 @@ LoadProgress()
 ScanAvailableAugs()
 LoadDraftFromEquippedRing()
 if State.autoTrackProgressLogs then
-    RegisterProgressEvents()
+    StartProgressLog()
 end
 local pearlInitOK,pearlReady = pcall(PearlNetwork.init)
 if pearlInitOK and pearlReady then
@@ -3133,17 +3304,18 @@ mq.imgui.init(
 
 while State.open do
     mq.delay(100)
-    if State.progressEventsPending ~= nil then
-        if State.progressEventsPending then
-            RegisterProgressEvents()
-        else
-            mq.unevent('project_might_progress_kill')
-            mq.unevent('warden_companion_solo_progress')
-            mq.unevent('warden_companion_group_progress')
+    if State.autoTrackProgressLogs and State.logFile then
+        local now = os.time()
+        if State.logImporting or now - State.logLastPoll >= 2 then
+            State.logLastPoll = now
+            local ok,pumpError = pcall(PumpProgressLog)
+            if not ok then
+                State.logStatus = 'Log read failed: '..tostring(pumpError)
+                ResetProgressLog()
+            end
         end
-        State.progressEventsPending = nil
     end
-    if State.pearlTrackerReady or State.autoTrackProgressLogs then
+    if State.pearlTrackerReady then
         mq.doevents()
     end
 
