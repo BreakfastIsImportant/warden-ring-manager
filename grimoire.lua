@@ -2691,6 +2691,8 @@ local function PumpProgressLog()
     end
 end
 
+local EQMData -- loaded from eqm-data/instances.lua further down
+
 -- Live chat capture: works even when EverQuest logging is off.
 local function OnProgressChat(line)
     if not State.autoTrackProgressLogs then
@@ -2713,6 +2715,98 @@ end
 mq.event('grimoire_prog_first','#*#for the first time#*#',OnProgressChat)
 mq.event('grimoire_prog_tier','#*#progression!#*#',OnProgressChat)
 mq.event('grimoire_prog_defeat','#*#was defeated by#*#',OnProgressChat)
+
+-- Instance NPCs only offer an instance once its prerequisites are done, so what they offer (or refuse) reveals progress.
+local instanceTierIndex
+local function NormalizeInstanceName(name)
+    name = name:gsub('%s+%-%s+.*$','')
+    return (name:lower():gsub('[^%w]',''))
+end
+
+local function FindInstanceTier(name)
+    if not instanceTierIndex then
+        instanceTierIndex = {}
+        for number,info in pairs(EQMData.tiers) do
+            for _,instance in ipairs(info.instances) do
+                instanceTierIndex[NormalizeInstanceName(instance.title)] = number
+            end
+        end
+    end
+    return instanceTierIndex[NormalizeInstanceName(name)]
+end
+
+local OfferSectionPath = {Solo=1,Duo=1,Trio=1,Group=2}
+
+local function MarkTiersBelow(path,tier)
+    State.logMaxTier = State.logMaxTier or {}
+    State.logTiers = State.logTiers or {}
+    if (State.logMaxTier[path] or 0) >= tier then
+        return false
+    end
+    State.logMaxTier[path] = tier
+    local changes = ApplyTierCompletion()
+    State.progressPendingSave = true
+    State.progressPendingChanges = State.progressPendingChanges + math.max(changes,1)
+    return true
+end
+
+-- A level unlock means every tier whose top level is below it has been finished.
+local function OnLevelUnlock(line)
+    if not State.autoTrackProgressLogs or line:find('You must complete',1,true) then
+        return
+    end
+    local mine = line:find(GetLogCharacterName(),1,true) or line:find(' says, ',1,true)
+    local level = tonumber(line:match('unlock level (%d+)') or line:match('[Ll]evel unlock[^%d]*(%d+)'))
+    if not mine or not level then
+        return
+    end
+    local best = 0
+    for number,info in pairs(EQMData.tiers) do
+        local top = tonumber((info.level or ''):match('(%d+)[^%d]*$'))
+        if top and top < level and number > best then
+            best = number
+        end
+    end
+    if best > 0 then
+        local changed = MarkTiersBelow(1,best)
+        changed = MarkTiersBelow(2,best) or changed
+        if changed then
+            State.logStatus = string.format('Level %d unlocked: tiers up to %d marked complete.',level,best)
+        end
+    end
+end
+mq.event('grimoire_level_unlock','#*#unlock level#*#',OnLevelUnlock)
+mq.event('grimoire_level_unlock2','#*#level unlock#*#',OnLevelUnlock)
+
+local function OnInstanceSection(line,section)
+    State.offerSection = section
+end
+
+local function OnInstanceOffer(line)
+    if not State.autoTrackProgressLogs then
+        return
+    end
+    local name = line:match('%[(.-) %- Bronze%]')
+    local path = OfferSectionPath[State.offerSection or '']
+    local tier = name and FindInstanceTier(name)
+    if not tier or not path or tier < 1 then
+        return
+    end
+    if (State.logMaxTier[path] or 0) < tier - 1 and MarkTiersBelow(path,tier - 1) then
+        State.logStatus = string.format('NPC offers %s (Tier %d): tiers below %d marked complete.',name,tier,tier)
+    end
+end
+
+local function OnInstanceRefusal(line)
+    local tier = line:match('request any tier (%d+) instances')
+    if tier then
+        State.logStatus = string.format('NPC says Tier %s is locked: %s',tier,line:match('You must complete (.-) in order') or '')
+    end
+end
+
+mq.event('grimoire_offer_section','#*#You options for #1# instances#*#',OnInstanceSection)
+mq.event('grimoire_offer_item','#*#- Bronze]#*#',OnInstanceOffer)
+mq.event('grimoire_offer_refusal','#*#in order to request any tier#*#',OnInstanceRefusal)
 
 local function CountLogTiers()
     local count = 0
@@ -2864,7 +2958,8 @@ local HighlightZones = {
 }
 
 -- Generated instance data (eqmight.com instanced zones list, eqmight.top zone list).
-local okData,EQMData = pcall(require,'eqm-data.instances')
+local okData
+okData,EQMData = pcall(require,'eqm-data.instances')
 if not okData or type(EQMData) ~= 'table' then
     EQMData = {tiers={},zones={},npcs={}}
 end
