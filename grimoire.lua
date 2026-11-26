@@ -3614,7 +3614,7 @@ local function DrawAllCharsPopup()
     if ImGui.BeginPopupModal('Update all characters?',nil,ImGuiWindowFlags.AlwaysAutoResize) then
         ImGui.Text('Apply manual updates to every character on the All Characters screen?')
         ImGui.TextDisabled('Characters can be excluded individually there. You can change this under')
-        ImGui.TextDisabled('Overview > Characters.')
+        ImGui.TextDisabled('Tools > All characters or Overview > Characters.')
         local function Answer(all)
             State.updateAllChars = all
             State.promptAllChars = false
@@ -3795,10 +3795,6 @@ local function DrawProgressNavUI()
         local info = EQMData.tiers[number]
         NavItem(string.format('Tier %d (%d zones)',number,#info.instances),'i:'..number)
     end
-    ImGui.Spacing()
-    ImGui.TextDisabled('-- TOOLS --')
-    NavItem('Custom Flags','flags')
-    NavItem('All Characters','chars')
     ImGui.Spacing()
     ImGui.TextDisabled('-- GUIDE --')
     for _,section in ipairs(GuideSections) do
@@ -4070,14 +4066,40 @@ local function DrawTravelHubs()
 end
 
 local function DrawToolsUI()
-    DrawHeading('Travel methods (AA / item clicks)')
-    if not State.travelSetupDone then
-        ImGui.TextColored(1,0.75,0.3,1,'First-time setup: choose how Grimoire travels, then press Done.')
+    if ImGui.CollapsingHeader('Travel methods (AA / item clicks)##tools_travel',ImGuiTreeNodeFlags.DefaultOpen) then
+        if not State.travelSetupDone then
+            ImGui.TextColored(1,0.75,0.3,1,'First-time setup: choose how Grimoire travels, then press Done.')
+        end
+        DrawTravelHubs()
     end
-    DrawTravelHubs()
-    ImGui.Spacing()
-    DrawHeading('Characters')
-    DrawCharacterSettings()
+
+    if ImGui.CollapsingHeader('Auto NPC options##tools_auto',ImGuiTreeNodeFlags.DefaultOpen) then
+        ImGui.TextDisabled('Used by every "Go: <npc>" button. Separate several say phrases with ;')
+        ImGui.PushItemWidth(220)
+        State.autoSay = ImGui.InputText('Say after hail##auto_say',State.autoSay or '',120)
+        State.autoGive = ImGui.InputText('Hand in item##auto_give',State.autoGive or '',80)
+        ImGui.PopItemWidth()
+    end
+
+    if ImGui.CollapsingHeader('Progress tracking##tools_track',ImGuiTreeNodeFlags.DefaultOpen) then
+        local autoTrack,autoTrackChanged = ImGui.Checkbox(
+            'Auto-track from EverQuest logs (/log on)##progress_auto',
+            State.autoTrackProgressLogs
+        )
+        if autoTrackChanged then
+            SetProgressLogTracking(autoTrack)
+        end
+        ImGui.TextDisabled(State.logStatus)
+    end
+
+    if ImGui.CollapsingHeader('Custom flags##tools_flags') then
+        DrawSideFlagsUI()
+    end
+
+    if ImGui.CollapsingHeader('All characters##tools_chars',ImGuiTreeNodeFlags.DefaultOpen) then
+        DrawAllCharactersUI()
+    end
+    DrawAllCharsPopup()
 end
 
 local function DrawProgressionUI()
@@ -4087,31 +4109,17 @@ local function DrawProgressionUI()
         string.format('Progress: %d/%d targets complete (%d%%)',done,total,math.floor(fraction * 100)))
     ImGui.ProgressBar(fraction,-1,0,string.format('%d%% overall completion',math.floor(fraction * 100)))
 
-    local autoTrack,autoTrackChanged = ImGui.Checkbox(
-        'Auto-track from EverQuest logs (/log on)##progress_auto',
-        State.autoTrackProgressLogs
-    )
-    if autoTrackChanged then
-        SetProgressLogTracking(autoTrack)
-    end
-    ImGui.SameLine()
-    ImGui.TextDisabled(State.logStatus)
-    ImGui.PushItemWidth(180)
-    State.autoSay = ImGui.InputText('Say after hail##auto_say',State.autoSay or '',120)
-    ImGui.SameLine()
-    State.autoGive = ImGui.InputText('Hand in item##auto_give',State.autoGive or '',80)
-    ImGui.PopItemWidth()
-    ImGui.SameLine()
     if State.autoRunning or State.autoRequest then
         if ImGui.SmallButton('Stop##auto_stop') then
             State.autoCancel = true
             mq.cmd('/nav stop')
         end
+        ImGui.SameLine()
     end
     if State.autoStatus ~= '' then
         ImGui.TextColored(ProgressColors.cyan[1],ProgressColors.cyan[2],ProgressColors.cyan[3],1,'Auto NPC: '..State.autoStatus)
     else
-        ImGui.TextDisabled('Auto NPC: press a "Go: <npc>" button in the Instance Guide. Separate several say phrases with ;')
+        ImGui.TextDisabled('Auto NPC: press a "Go: <npc>" button in the Instance Guide. Options live in the Tools tab.')
     end
     if State.autoKeywordList and #State.autoKeywordList > 0 then
         ImGui.TextDisabled('NPC keywords - click to say:')
@@ -4159,8 +4167,6 @@ local function DrawProgressionUI()
         else
             DrawOverviewUI()
         end
-    elseif nav == 'flags' then
-        DrawSideFlagsUI()
     elseif nav:sub(1,2) == 'a:' then
         local found
         for _,group in ipairs(AccessFlags) do
@@ -4177,8 +4183,6 @@ local function DrawProgressionUI()
         DrawInstanceSearch()
     elseif nav:match('^i:%d+$') then
         DrawInstanceGuide(tonumber(nav:sub(3)))
-    elseif nav == 'chars' then
-        DrawAllCharactersUI()
     elseif nav:sub(1,2) == 'g:' then
         DrawGuideSection(nav:sub(3))
     else
