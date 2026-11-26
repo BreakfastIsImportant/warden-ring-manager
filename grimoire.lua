@@ -74,7 +74,7 @@ local InstanceCategories = {
             {name='Tier 4 - Velious', tier=4, might=10, auto=true, content='Narandi the Wretched (Great Divide)|Mistress Latazura (Siren\'s Grotto)'},
             {name='Tier 5 - Luclin', tier=5, might=15, auto=true, content='Doomshade (Umbral Plains)|Grieg Veneficius (Grieg\'s End)|Pathless Sentinel (The Grey)'},
             {name='Tier 6 - Dragons of Norrath', tier=6, might=20, auto=true, content='Grel Strongboom (Broodlands)|Tirranun (Tirranun\'s Delve)'},
-            {name='Tier 7 - Planes of Power', tier=7, might=80, content='Bertoxxulous (Crypt of Decay)|Fabled Lady Vox|Beau\'Draa (Root of Ro)'},
+            {name='Tier 7 - Planes of Power', tier=7, might=80, content='Bertoxxulous (Crypt of Decay)|Fabled Lady Vox|Beau\'Draa (Root of Ro)|Kurn\'s Tower 2.0'},
             {name='Tier 8 - Dragons of Norrath', tier=8, might=120, content='Rikkukin (The Ascent)|Circle of Drakes (The Nest)|Matriarch Shyra (The Lodge)'},
             {name='Tier 9 - Omens of War', tier=9, might=160, content='Mastery of Versatility|Antraygus|Zhisza Shissars'},
             {name='Tier 10 - Classic Trio / Others', tier=10, might=200, content='Timeless Frenzied Ghoul|Axeweaver and Mundunugu|Ar\'yer the Warlord|Corruption of Ro'},
@@ -93,14 +93,14 @@ local InstanceCategories = {
             {name='Tier 5 - Kunark / Luclin', tier=5, might=100, raidMight=200, content='Korucust (Halls of Betrayals)|Inquisitor Seru|Emperor Ssraeshza|Aten Ha Ra (also Raid Tier 5)'},
             {name='Tier 6 - Dragons and Idols', tier=6, might=200, raidMight=320, content='The Avatar of War|Phara Dar (also Raid Tier 6)'},
             {name='Tier 7 - Fabled / Planes of Power', tier=7, might=500, auto='selected', content='Fabled Lord Nagafen|Fabled Venril Sathir|Quarm'},
-            {name='Tier 8 - Gates of Discord / LDoN', tier=8, might=800, content='Primal Ukun Warhound|The Keeper of the Altar|Zun`Muram Tkarish Zyk|Tunat`Muram Cuu Vauax|Ancient Seer Venos'},
+            {name='Tier 8 - Gates of Discord / LDoN', tier=8, might=800, content='Primal Ukun Warhound|The Keeper of the Altar|Zun`Muram Tkarish Zyk|Tunat`Muram Cuu Vauax|Ancient Seer Venos|Hushed Banquet'},
             {name='Tier 9 - Omens / Dragons / Others', tier=9, might=1100, content='Ancient Warlord Petrad|Summoran|Arch Magus Vangl|Vishimtar|Ar\'yer'},
             {name='Tier 10 - Fabled / Others', tier=10, might=1400, content='Nightrage Sanguinarch|Fabled Agnarr|Fabled Skal|Fabled Saryrn|Sullon Zek|Mayong\'s Confidents|Ayonae Ro'},
             {name='Tier 11 - Fabled / LDoN', tier=11, might=1700, content='Fabled Lord Mithaniel Marr|Fabled Solusek Ro|Fabled Rallos Zek|Chamber of Eternal Affliction|Sunken Labyrinth|Solteris'},
             {name='Tier 12 - Timeless / Fabled', tier=12, might=2000, raidMight=3500, content='Fabled Fennin Ro|Fabled Rydda`Dar|Geomancer Blackquill|Timeless Trakanon|Mayong Mistmore|Solusek Ro|Gorvash Bloodmarauder'},
             {name='Tier 13 - Might progression', tier=13, might=2300, raidMight=4200, content='Krag`Thul|Rallos Zek|Shade of Glenicae|Timeless Avatar of War|Skaramatra|Lavaforged Behemoth|Plaguelord Musca|Ebonthrax'},
-            {name='Tier 14', tier=14, might=2600, raidMight=4800, content='Tier 14 progression targets (including 12- and 24-player raid suggestions)'},
-            {name='Tier 15', tier=15, might=2900, content='Tier 15 progression targets'},
+            {name='Tier 14', tier=14, might=2600, raidMight=4800,             content='Temple of Bertoxxulous|Fabled Inktu\'Ta|Crystallos Raid|Lair of the Risen Raid|Nadox 2.0 Raid'},
+                        {name='Tier 15', tier=15, might=2900, content='Fabled Txevu (Lair of the Elite)'},
         },
     },
     {
@@ -2640,6 +2640,26 @@ local HighlightZones = {
     'Halls of Betrayal','Western Waste','Sunken Library','Nexus',
 }
 
+-- Generated instance data (eqmight.com instanced zones list, eqmight.top zone list).
+local okData,EQMData = pcall(require,'eqm-data.instances')
+if not okData or type(EQMData) ~= 'table' then
+    EQMData = {tiers={},zones={},npcs={}}
+end
+local function MergePhrases(target,extra)
+    local seen = {}
+    for _,phrase in ipairs(target) do
+        seen[phrase] = true
+    end
+    for _,phrase in ipairs(extra or {}) do
+        if not seen[phrase] then
+            seen[phrase] = true
+            table.insert(target,phrase)
+        end
+    end
+end
+MergePhrases(HighlightNPCs,EQMData.npcs)
+MergePhrases(HighlightZones,EQMData.zones)
+
 local HighlightCache = {}
 
 local function BuildHighlightSegments(text)
@@ -2782,6 +2802,13 @@ local function NavLabel(key)
         return category.name..' - '..category.tiers[tonumber(tierIndex)].name
     end
     local groupID = resolved:match('^a:(.+)$')
+    local instTier = resolved:match('^i:(%d+)$')
+    if instTier then
+        return 'Instance Guide - Tier '..instTier
+    end
+    if resolved == 'search' then
+        return 'Instance Search'
+    end
     if groupID then
         for _,group in ipairs(AccessFlags) do
             if group.id == groupID then
@@ -2851,6 +2878,7 @@ local function DrawTierDetail(categoryIndex,tierIndex)
     end
 
     ImGui.Spacing()
+    DrawNavLinks({{label='Instance guide: Tier '..tier.tier,nav='i:'..tier.tier}},'tierguide')
     local related = TierAccessFlags[categoryIndex..':'..tier.tier]
     if related then
         DrawHeading('Related Access Flags')
@@ -3113,6 +3141,18 @@ local function DrawProgressNavUI()
         end
     end
     ImGui.Spacing()
+    ImGui.TextDisabled('-- INSTANCE GUIDE --')
+    NavItem('Search NPCs / zones / quest givers','search')
+    local tierNumbers = {}
+    for number in pairs(EQMData.tiers) do
+        table.insert(tierNumbers,number)
+    end
+    table.sort(tierNumbers)
+    for _,number in ipairs(tierNumbers) do
+        local info = EQMData.tiers[number]
+        NavItem(string.format('Tier %d (%d zones)',number,#info.instances),'i:'..number)
+    end
+    ImGui.Spacing()
     ImGui.TextDisabled('-- TOOLS --')
     NavItem('Custom Flags','flags')
     NavItem('All Characters','chars')
@@ -3137,6 +3177,90 @@ local function SetProgressLogTracking(enabled)
             and 'Log tracking enabled.'
             or 'Log tracking disabled; manual checklist remains available.'
     end
+end
+
+local function DrawInstanceEntry(tierNumber,index,instance,idPrefix)
+    local open = ImGui.CollapsingHeader(string.format('%s##%s_%d_%d',instance.title,idPrefix,tierNumber,index))
+    if not open then
+        return
+    end
+    ImGui.Indent()
+    if instance.giver ~= '' then
+        DrawRichText('Quest giver: '..instance.giver)
+    end
+    local facts = {}
+    if instance.party ~= '' then table.insert(facts,'Party: '..instance.party) end
+    if instance.respawn ~= '' then table.insert(facts,'Respawn: '..instance.respawn) end
+    if instance.req ~= '' then table.insert(facts,'Requires: '..instance.req) end
+    if #facts > 0 then
+        ImGui.TextColored(ProgressColors.gold[1],ProgressColors.gold[2],ProgressColors.gold[3],1,table.concat(facts,'   |   '))
+    end
+    for _,note in ipairs(instance.notes) do
+        DrawRichText(note,ProgressColors.grey)
+    end
+    ImGui.Unindent()
+    ImGui.Spacing()
+end
+
+local function DrawInstanceGuide(tierNumber)
+    local info = EQMData.tiers[tierNumber]
+    if not info then
+        DrawHeading('Instance Guide')
+        ImGui.TextDisabled('Instance data was not found. Make sure the eqm-data folder is next to grimoire.lua.')
+        return
+    end
+    DrawHeading('Instance Guide - Tier '..tierNumber)
+    if info.level ~= '' then
+        ImGui.TextDisabled(info.level)
+    end
+    for index,instance in ipairs(info.instances) do
+        DrawInstanceEntry(tierNumber,index,instance,'ig')
+    end
+    ImGui.Spacing()
+    ImGui.TextDisabled('Source: https://www.eqmight.com/progression/list-of-instanced-zones')
+end
+
+local function DrawInstanceSearch()
+    DrawHeading('Instance Search')
+    ImGui.TextDisabled('Find an NPC, zone, quest giver or hint across every tier.')
+    State.instSearch = ImGui.InputText('##inst_search',State.instSearch or '',80)
+    local query = (State.instSearch or ''):lower():gsub('^%s+',''):gsub('%s+$','')
+    if query == '' then
+        return
+    end
+    local numbers = {}
+    for number in pairs(EQMData.tiers) do
+        table.insert(numbers,number)
+    end
+    table.sort(numbers)
+    local matches = 0
+    for _,number in ipairs(numbers) do
+        for index,instance in ipairs(EQMData.tiers[number].instances) do
+            local haystack = (instance.title..' '..instance.giver..' '..table.concat(instance.notes,' ')):lower()
+            if haystack:find(query,1,true) then
+                matches = matches + 1
+                if matches <= 40 then
+                    ImGui.TextColored(ProgressColors.gold[1],ProgressColors.gold[2],ProgressColors.gold[3],1,'Tier '..number)
+                    ImGui.SameLine()
+                    DrawInstanceEntry(number,index,instance,'is')
+                end
+            end
+        end
+    end
+    ImGui.TextDisabled(string.format('%d matching instance(s).',matches))
+
+    ImGui.Spacing()
+    DrawHeading('Look up on the EQ Might database')
+    local encoded = State.instSearch:gsub('[^%w]',function(c) return string.format('%%%02X',c:byte()) end)
+    for _,kind in ipairs({{'items','Item'},{'npcs','NPC'},{'spells','Spell'}}) do
+        if ImGui.SmallButton('Copy '..kind[2]..' search link##copy_'..kind[1]) then
+            local param = kind[1] == 'spells' and 'name' or 'iname'
+            ImGui.SetClipboardText(string.format('https://eqmight.top/?a=%s&%s=%s&isearch=true',kind[1],param,encoded))
+            State.progressStatus = 'Copied the '..kind[2]..' search link; paste it into a browser.'
+        end
+        ImGui.SameLine()
+    end
+    ImGui.NewLine()
 end
 
 local function DrawGuideSection(sectionID)
@@ -3221,6 +3345,10 @@ local function DrawProgressionUI()
         else
             DrawOverviewUI()
         end
+    elseif nav == 'search' then
+        DrawInstanceSearch()
+    elseif nav:match('^i:%d+$') then
+        DrawInstanceGuide(tonumber(nav:sub(3)))
     elseif nav == 'chars' then
         DrawAllCharactersUI()
     elseif nav:sub(1,2) == 'g:' then

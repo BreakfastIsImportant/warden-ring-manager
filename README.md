@@ -36,6 +36,7 @@ The tracker does not read the NPC popup. A one-shot dialogue probe caused a clie
 
 1. Copy `warden-ring-manager/grimoire.lua` to your MacroQuest `lua` directory as `grimoire.lua`.
 2. Copy the bundled `pt-main` folder into the same `lua` directory, keeping its name. It is the Pearl Tracker, originally by Chadow of the EQ Might Discord (see `pt-main/README.md`).
+   Also copy the `eqm-data` folder (instance guide, zone and NPC data generated from eqmight.com and eqmight.top) into the same `lua` directory; without it the Instance Guide is empty and fewer names are colour-coded.
 3. Make sure MacroQuest's Lua and ImGui support are available.
 4. Load **MQ2Nav** if you want automatic travel to Pietri.
 5. In game, run:
@@ -67,4 +68,5 @@ The calculator references [EQ Might progression](https://www.eqmight.com/progres
 
 - `grimoire.lua` — the MacroQuest script
 - `pt-main/` — bundled Pearl Tracker (credit: Chadow)
+- `eqm-data/` — instance, zone and NPC data (tiers 0–15) from eqmight.com and eqmight.top; feeds the Instance Guide, Instance Search and name colouring
 - `README.md` — features, setup, and usage
