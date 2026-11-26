@@ -122,7 +122,7 @@ local AccessFlags = {
         name='Planes of Power Flags',
         intro='Required for the Planes of Power and Fabled raid content. Plane of Fire, Halls of Honor B and Plane of Time must be flagged on every character even if you buy the Time key pieces. Tip: paste your /seer text into alkabor.com/flags.html to see where you stand.',
         steps={
-            {id='pop_fire',name='Plane of Fire access (Rallos Zek flag)',note='Needed for the T12 raid instance. PoTactics (Drunder): kill Decorin Berik and Decorin Grunhork, kill fake Tallon and Vallon, kill fake Rallos, then jump into the pit and kill Rallos Zek.'},
+            {id='pop_fire',name='Plane of Fire access (Rallos Zek flag)',note='Needed for the T12 raid instance. PoTactics (Drunder): kill Decorin Berik and Decorin Grunhork, kill fake Tallon and Vallon, kill fake Rallos, then jump into the pit and kill Rallos Zek.',links={{label='Open Group Tier 12',nav='tier:2:12'}}},
             {id='pop_solro',name='Tower of Solusek Ro (Solusek Ro flag)',note='Do all the mini flags in each wing before you can click up. After getting both hails, zone in from Plane of Tranquility to finish the flag.'},
             {id='pop_water',name='Plane of Water access',note='Needed for the ranger epic. Requires Saryrn (Screaming Sphere, 1 Legendary token from Adrienne) OR Terris Thule (Nightmare hedge maze). Just the Saryrn flag is needed, not Keeper of Sorrows. Also requires Halls of Honor A Trials and the Mith Marr flag from Halls of Honor B.'},
             {id='pop_hoha',name='Halls of Honor A Trials',note='Also required for the T11 Fabled Temple of Marr instance.'},
@@ -146,7 +146,7 @@ local AccessFlags = {
             {id='god_intukta',name='Qvic caves down to Intukta, hail for the flag',note='The flag lets you pick up the Intukta instance from Chuck.'},
             {id='god_piece3',name='Intukta instance: third Txevu key piece',note='You can illusion through the doors for the easiest run.'},
             {id='god_cipher',name='Brevik (Abysmal Sea): Cipher of Texvu',note='Turn in the three pieces, then manually zone into Txevu from Qvic to finish flagging.'},
-            {id='god_txevu',name='Txevu keys (champion event, high priest)',note='The champion event key ports your group from Chuck to Txevu; the high priest key picks up the instance. Skip the High Priest if short on time.'},
+            {id='god_txevu',name='Txevu keys (champion event, high priest)',note='The champion event key ports your group from Chuck to Txevu; the high priest key picks up the instance. Skip the High Priest if short on time.',links={{label='Open Txevu (Group T8)',nav='tier:2:8'}}},
             {id='god_tacvi',name='Tacvi access',note='The Txevu final boss drops the Tacvi key. Two Tacvi instances exist; take the guy\'s instance first, because the girl\'s instance locks you out of both.'},
         },
     },
@@ -158,8 +158,8 @@ local AccessFlags = {
             {id='war_start',name='Silent Note and Uriel\'s diary',note='Find Tsuagaido Tanaka, say "other tours", then "Tenjou Kanko". Take the Silent Note from Silent Eyes to Uriel for Uriel\'s diary.'},
             {id='war_items',name='Branded Cider and Fiery Blood',note='Cider: Froglok chef/bartender (Sebilis), or Blacksail cook/captain (Buried Sea). Blood: draconic spirit embers in Arcstone.'},
             {id='war_lucia',name='Lucia in Broodlands: stamp the diary',note='Say Thundercrest Isles to Trixie in PoK, click the teleporter to Broodlands, and hand Lucia the cider, blood and diary.'},
-            {id='war_rank1',name='Root of Ro solo instance: Rank 1 Warden ring',note='Loot the quest piece from the boss and turn it in with the stamped diary.'},
-            {id='war_rank2_items',name='Sporali Crown and Freezing Royal Blood',note='Sporali Caverns duo instance (Easy+ or higher; easier with 2 Rank 0 rings) from Rene. Blood from the princes in the RSS King fight or Queen Tarmax in the Tier 6 AoW instance.'},
+            {id='war_rank1',name='Root of Ro solo instance: Rank 1 Warden ring',note='Loot the quest piece from the boss and turn it in with the stamped diary.',links={{label='Start Solo Tier 7 (Root of Ro)',nav='tier:1:7'}}},
+            {id='war_rank2_items',name='Sporali Crown and Freezing Royal Blood',note='Sporali Caverns duo instance (Easy+ or higher; easier with 2 Rank 0 rings) from Rene. Blood from the princes in the RSS King fight or Queen Tarmax in the Tier 6 AoW instance.',links={{label='Solo Tier 9 (Sporali)',nav='tier:1:9'},{label='Group Tier 6',nav='tier:2:6'}}},
             {id='war_rank2',name='Rank 2 Warden ring flag',note='Wear the Rank 1 ring first and hand both items to Silent Eyes. You can then hand rings back to cycle options. Silent Eyes also sells finger augments for Wolf Tokens (save 5 per character).'},
         },
     },
@@ -168,7 +168,7 @@ local AccessFlags = {
         name='Stillmoon Temple Rewards',
         intro='Statue, idol and Cinderella quest items. Hand them to Pam or Aisha the Collector; reward quests can be cycled.',
         steps={
-            {id='sm_symbol',name='Mythical Golden Ancestors Symbol',note='Steel statue (Valrakor), Brass (Animated Granite Guardian), Bismuth (Celeste the Silent Paw), Iridium (Volaris the Sharp). All 100% drops, tradeable via Pam for 1 Legendary token each.'},
+            {id='sm_symbol',name='Mythical Golden Ancestors Symbol',note='Steel statue (Valrakor), Brass (Animated Granite Guardian), Bismuth (Celeste the Silent Paw), Iridium (Volaris the Sharp). All 100% drops, tradeable via Pam for 1 Legendary token each.',links={{label='Open Solo Tier 10',nav='tier:1:10'}}},
             {id='sm_idol',name='Mythical Idol of the Stillmoon Conqueror',note='Idols of a Titan, Nocturna, Thornheart and Drakes (Villy the Golden), 25% drops, tradeable via Pam for 1 Pam token each.'},
             {id='sm_shoes',name='Cinderella\'s Shoes',note='Enchanted Frog (Hartini), Fluffy Unicorn (Thunderhoof), Cute Kitten (Solstice); 100% drops, tradeable via Pam. Hand the shoes in at the zone-in quest giver; the NPC prevents duplicate rewards if you cycle correctly. Avoid aggroing the Tigger Puppy before killing Solstice.'},
         },
@@ -244,6 +244,7 @@ local GuideSections = {
             'Moon Pet Orb ranks 1/2/3 need levels 60/65/68 (+10 / +30 / +80 Might).',
             'Use the Rings tab to swap rank and augments through Pietri.',
         },
+        links={{label='Warden ring quest steps',nav='a:warden'}},
     },
     {
         id='pearls',
@@ -309,6 +310,8 @@ local State = {
     logTiers={},
     logMaxTier={},
     progressNav='overview',
+    navBack={},
+    navForward={},
     accessDone={},
     logChanges=0,
     logOffset=0,
@@ -2601,7 +2604,211 @@ local ProgressColors = {
     grey={0.60,0.60,0.62,1},
     cyan={0.55,0.85,1,1},
     ember={1,0.55,0.15,1},
+    npc={1,0.62,0.22,1},
+    zone={0.35,0.90,0.85,1},
+    link={0.55,0.70,1,1},
 }
+
+local HighlightNPCs = {
+    'Lady Maria Luisa','Sir Daniel','Adrienne','Fran','Chronographer Muon','Sarhya','Madronoa','Chuck','Lucifer',
+    'Tublik','Brevik','Silent Eyes','Uriel','Tsuagaido Tanaka','Lucia','Trixie','Rene','Father Kinley','Pam',
+    'Aisha the Collector','Aisha','Walter','Cloe','Cacuzza','Moonshine','Lydia','Korven','Pietri','Smith Rondo',
+    'Decorin Berik','Decorin Grunhork','Rallos Zek','Solusek Ro','Saryrn','Terris Thule','Agnarr','Aerin Dar',
+    'Mith Marr','Valrakor','Animated Granite Guardian','Animated Granite Titan','Celeste the Silent Paw',
+    'Volaris the Sharp','Nocturna','Thornheart','Villy the Golden','Hartini','Thunderhoof','Solstice',
+    'Queen Tarmax','Froglok chef','Froglok bartender','Blacksail cook','Blacksail captain','Ar\'yer the Warlord',
+    'Ar\'yer','Wolf Tokens','Mistress Mistrella','Skaramatra','Nki','Ragnarok','Balreth','Entharr','Quarm',
+    'Marta','Linda','Nacho','Charlotte','Amenadiel','Mazikeen','Emmett','Gene','Fluffy','Roughy','Wolfie','Aurora',
+    'Pipwyn Brambletoe','Balin the Stubborn','Kly\'s Distillate','Lady Vox','Cazic Thule','Innoruuk','Cazel','Phinigel Autropos',
+    'GrimClaw','Allizewsaur','Venril Sathir','King Tormax','The Final Arbiter','Velketor the Sorcerer','Zlandicar',
+    'Lord Yelinak','Vulak\'Aerr','Tallon','Vallon','Lord Nagafen','Lady Vox','Trakanon','Aten Ha Ra','Phara Dar','Avatar of War',
+}
+
+local HighlightZones = {
+    'Plane of Tranquility','PoTranquility','Plane of Knowledge','PoKnowledge','PoK','PoInnovation','Plane of Innovation',
+    'Plane of Fire','Plane of Water','Plane of Air','Plane of Earth','Plane of Time','PoTactics','Drunder',
+    'Tower of Solusek Ro','Halls of Honor A','Halls of Honor B','Halls of Honor','Eartha','Sebilis','Arcstone',
+    'Broodlands','Buried Sea','Thundercrest Isles','Thundercrest','Natimbi','Qvic','Txevu','Texvu','Tacvi','Intukta',
+    'Kod\'Taz','KT','Ferubi','Abysmal Sea','Freeport','Sporali Caverns','Root of Ro','Stillmoon Temple','Stillmoon',
+    'RSS','Lair of the Risen','Solteris','Toskirakk','Chambers','Crystallos','Tunare\'s Shrine','Sverag',
+    'North Karana','Ocean of Tears','Everfrost Peaks','Oasis of Marr','Kedge Keep','Plane of Fear','Dreadlands',
+    'Deadlands','Skyfire','Burning Woods','Gorukar Mesa','Great Divide','Siren\'s Grotto','Sirens Grotto',
+    'Umbral Plains','Grieg\'s End','The Grey','Tirranun\'s Delve','Crypt of Decay','Permafrost Keep','The Ascent',
+    'The Nest','The Lodge','Lodge of the Fang','Muramite Proving Grounds','Lower Guk','Karnor\'s Castle',
+    'Temple of Veeshan','Chardok','Velketor\'s Labyrinth','Kael Drakkel','Sleeper\'s Tomb','Skyshrine',
+    'Dragon Necropolis','Sanctus Seru','Ssraeshza Temple','Vex Thal','Veeshan\'s Peak','Plane of Hate',
+    'Halls of Betrayal','Western Waste','Sunken Library','Nexus',
+}
+
+local HighlightCache = {}
+
+local function BuildHighlightSegments(text)
+    local spans = {}
+    local function scan(list,kind)
+        for _,phrase in ipairs(list) do
+            local init = 1
+            while true do
+                local s,e = text:find(phrase,init,true)
+                if not s then
+                    break
+                end
+                local before = s == 1 or not text:sub(s - 1,s - 1):match('%w')
+                local after = e == #text or not text:sub(e + 1,e + 1):match('%w')
+                if before and after then
+                    table.insert(spans,{s=s,e=e,kind=kind})
+                end
+                init = e + 1
+            end
+        end
+    end
+    scan(HighlightNPCs,'npc')
+    scan(HighlightZones,'zone')
+    -- Longer phrases claim their characters first.
+    table.sort(spans,function(a,b) return (a.e - a.s) > (b.e - b.s) end)
+    local owner = {}
+    for _,span in ipairs(spans) do
+        local free = true
+        for i=span.s,span.e do
+            if owner[i] then
+                free = false
+                break
+            end
+        end
+        if free then
+            for i=span.s,span.e do
+                owner[i] = span.kind
+            end
+        end
+    end
+
+    local segments = {}
+    for start,token in text:gmatch('()(%S+%s*)') do
+        local kind
+        for i=start,start + #token - 1 do
+            if owner[i] then
+                kind = owner[i]
+                break
+            end
+        end
+        table.insert(segments,{text=token,kind=kind})
+    end
+    return segments
+end
+
+-- Draws wrapped text with NPC and zone names coloured; baseColor tints plain words.
+local function DrawRichText(text,baseColor)
+    local segments = HighlightCache[text]
+    if not segments then
+        segments = BuildHighlightSegments(text)
+        HighlightCache[text] = segments
+    end
+
+    local availWidth = ImGui.GetContentRegionAvail()
+    local lineWidth = 0
+    for index,segment in ipairs(segments) do
+        local width = ImGui.CalcTextSize(segment.text)
+        if index > 1 then
+            if lineWidth + width > availWidth then
+                lineWidth = 0
+            else
+                ImGui.SameLine(0,0)
+            end
+        end
+        local color = segment.kind and ProgressColors[segment.kind] or baseColor
+        if color then
+            ImGui.TextColored(color[1],color[2],color[3],color[4] or 1,segment.text)
+        else
+            ImGui.Text(segment.text)
+        end
+        lineWidth = lineWidth + width
+    end
+end
+
+-- "Boss (Zone)" target names get a coloured boss and zone.
+local function DrawTargetName(target)
+    local name,zone = target:match('^(.-)%s*(%b())%s*$')
+    if name and zone then
+        ImGui.TextColored(ProgressColors.npc[1],ProgressColors.npc[2],ProgressColors.npc[3],1,name)
+        ImGui.SameLine(0,6)
+        ImGui.TextColored(ProgressColors.zone[1],ProgressColors.zone[2],ProgressColors.zone[3],1,zone)
+    else
+        DrawRichText(target)
+    end
+end
+
+local function SetProgressNav(key)
+    if State.progressNav == key then
+        return
+    end
+    table.insert(State.navBack,State.progressNav)
+    State.navForward = {}
+    State.progressNav = key
+end
+
+local function ProgressNavBack()
+    local previous = table.remove(State.navBack)
+    if previous then
+        table.insert(State.navForward,State.progressNav)
+        State.progressNav = previous
+    end
+end
+
+local function ProgressNavForward()
+    local nextKey = table.remove(State.navForward)
+    if nextKey then
+        table.insert(State.navBack,State.progressNav)
+        State.progressNav = nextKey
+    end
+end
+
+local function ResolveNavKey(key)
+    local categoryIndex,tierNumber = key:match('^tier:(%d+):(%d+)$')
+    if categoryIndex then
+        for tierIndex,tier in ipairs(InstanceCategories[tonumber(categoryIndex)].tiers) do
+            if tier.tier == tonumber(tierNumber) then
+                return string.format('t:%s:%d',categoryIndex,tierIndex)
+            end
+        end
+        return 'overview'
+    end
+    return key
+end
+
+local function NavLabel(key)
+    local resolved = ResolveNavKey(key)
+    local categoryIndex,tierIndex = resolved:match('^t:(%d+):(%d+)$')
+    if categoryIndex then
+        local category = InstanceCategories[tonumber(categoryIndex)]
+        return category.name..' - '..category.tiers[tonumber(tierIndex)].name
+    end
+    local groupID = resolved:match('^a:(.+)$')
+    if groupID then
+        for _,group in ipairs(AccessFlags) do
+            if group.id == groupID then
+                return group.name
+            end
+        end
+    end
+    return resolved
+end
+
+-- Rows of clickable links that jump the viewing panel to another page.
+local function DrawNavLinks(links,idPrefix)
+    if not links then
+        return
+    end
+    for index,link in ipairs(links) do
+        if index > 1 then
+            ImGui.SameLine()
+        end
+        ImGui.PushStyleColor(ImGuiCol.Text,ProgressColors.link[1],ProgressColors.link[2],ProgressColors.link[3],1)
+        local clicked = ImGui.SmallButton(string.format('%s >##%s_%d',link.label or NavLabel(link.nav),idPrefix,index))
+        ImGui.PopStyleColor()
+        if clicked then
+            SetProgressNav(ResolveNavKey(link.nav))
+        end
+    end
+end
 
 local function DrawHeading(text)
     ImGui.TextColored(ProgressColors.gold[1],ProgressColors.gold[2],ProgressColors.gold[3],1,text)
@@ -2654,7 +2861,7 @@ local function DrawTierDetail(categoryIndex,tierIndex)
                     ImGui.BulletText(string.format('%s (%d/%d)',group.name,groupDone,groupTotal))
                     ImGui.SameLine()
                     if ImGui.SmallButton('Open##rel_'..groupID) then
-                        State.progressNav = 'a:'..groupID
+                        SetProgressNav('a:'..groupID)
                     end
                 end
             end
@@ -2666,9 +2873,11 @@ local function DrawTierDetail(categoryIndex,tierIndex)
         local key = ProgressKey(categoryIndex,tierIndex,targetIndex)
         local isDone = State.progressDone[key] == true
         local updated,changed = ImGui.Checkbox(
-            string.format('%s##t_%d_%d_%d',target,categoryIndex,tierIndex,targetIndex),
+            string.format('##t_%d_%d_%d',categoryIndex,tierIndex,targetIndex),
             isDone
         )
+        ImGui.SameLine()
+        DrawTargetName(target)
         if changed then
             State.progressDone[key] = updated and true or nil
             SaveProgressChanges()
@@ -2741,7 +2950,8 @@ end
 local function DrawAccessUI(group)
     local done,total = AccessStats(group)
     DrawHeading(group.name)
-    ImGui.TextWrapped(group.intro)
+    DrawRichText(group.intro)
+    DrawNavLinks(group.links,'g_'..group.id)
     ImGui.TextColored(ProgressColors.gold[1],ProgressColors.gold[2],ProgressColors.gold[3],1,
         string.format('Progress: %d/%d steps complete',done,total))
     ImGui.ProgressBar(total > 0 and done / total or 0,-1,0,string.format('%d / %d',done,total))
@@ -2768,9 +2978,8 @@ local function DrawAccessUI(group)
             SaveProgressChanges()
         end
         ImGui.Indent()
-        ImGui.PushStyleColor(ImGuiCol.Text,ProgressColors.grey[1],ProgressColors.grey[2],ProgressColors.grey[3],1)
-        ImGui.TextWrapped(step.note)
-        ImGui.PopStyleColor()
+        DrawRichText(step.note,ProgressColors.grey)
+        DrawNavLinks(step.links,step.id)
         ImGui.Unindent()
         ImGui.Spacing()
     end
@@ -2778,6 +2987,11 @@ end
 
 local function DrawOverviewUI()
     DrawHeading('Progress Overview')
+    ImGui.TextColored(ProgressColors.npc[1],ProgressColors.npc[2],ProgressColors.npc[3],1,'NPC names')
+    ImGui.SameLine()
+    ImGui.TextColored(ProgressColors.zone[1],ProgressColors.zone[2],ProgressColors.zone[3],1,'Zone names')
+    ImGui.SameLine()
+    ImGui.TextColored(ProgressColors.link[1],ProgressColors.link[2],ProgressColors.link[3],1,'Clickable links')
     for categoryIndex=1,2 do
         local category = InstanceCategories[categoryIndex]
         local done,total = CategoryStats(categoryIndex)
@@ -2804,7 +3018,7 @@ local function DrawOverviewUI()
                 end
             end
             if ImGui.SmallButton(string.format('Open tier##next_%d',categoryIndex)) then
-                State.progressNav = string.format('t:%d:%d',categoryIndex,tierIndex)
+                SetProgressNav(string.format('t:%d:%d',categoryIndex,tierIndex))
             end
         else
             ImGui.TextColored(ProgressColors.green[1],ProgressColors.green[2],ProgressColors.green[3],1,
@@ -2819,7 +3033,7 @@ local function DrawOverviewUI()
         ImGui.Text(string.format('%s: %d / %d',group.name,done,total))
         ImGui.SameLine()
         if ImGui.SmallButton(string.format('Open##access_%d',index)) then
-            State.progressNav = 'a:'..group.id
+            SetProgressNav('a:'..group.id)
         end
     end
 
@@ -2856,7 +3070,7 @@ end
 local function DrawProgressNavUI()
     local function NavItem(label,key)
         if ImGui.Selectable(label..'##nav_'..key,State.progressNav == key) then
-            State.progressNav = key
+            SetProgressNav(key)
         end
     end
 
@@ -2930,8 +3144,9 @@ local function DrawGuideSection(sectionID)
             DrawHeading(section.label)
             for _,line in ipairs(section.lines) do
                 ImGui.Bullet()
-                ImGui.TextWrapped(line)
+                DrawRichText(line)
             end
+            DrawNavLinks(section.links,'gs_'..section.id)
         end
     end
     ImGui.Spacing()
@@ -2962,6 +3177,26 @@ local function DrawProgressionUI()
 
     ImGui.SameLine()
     ImGui.BeginChild('##prog_detail',0,0,true)
+    local canBack = #State.navBack > 0
+    local canForward = #State.navForward > 0
+    if canBack then
+        if ImGui.ArrowButton('##nav_back',ImGuiDir.Left) then
+            ProgressNavBack()
+        end
+    else
+        ImGui.TextDisabled(' < ')
+    end
+    ImGui.SameLine()
+    if canForward then
+        if ImGui.ArrowButton('##nav_fwd',ImGuiDir.Right) then
+            ProgressNavForward()
+        end
+    else
+        ImGui.TextDisabled(' > ')
+    end
+    ImGui.SameLine()
+    ImGui.TextDisabled(NavLabel(State.progressNav or 'overview'))
+    ImGui.Separator()
     local nav = State.progressNav or 'overview'
     local categoryIndex,tierIndex = nav:match('^t:(%d+):(%d+)$')
     if categoryIndex then
